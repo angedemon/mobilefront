@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../constants/config.dart';
+import '../services/app_settings_service.dart';
 import '../services/background_collection_service.dart';
 import '../services/consent_service.dart';
 import '../services/local_storage_service.dart';
@@ -15,7 +16,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _useGps = true;
+  final _settings = AppSettingsService();
+  late bool _useGps = _settings.useGps;
 
   final _collect = BackgroundCollectionService();
   CollectStatus _status = CollectStatus.unavailable;
@@ -47,9 +49,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _item('Test par défaut au démarrage', 'Test complet'),
             _item('Unité de débit', 'Mb/s'),
             _item('Style de fond', 'Vert'),
-            _toggle('Utiliser le GPS',
-                'Active/désactive la géolocalisation des tests', _useGps,
-                (v) => setState(() => _useGps = v)),
+            _toggle(
+                'Utiliser le GPS',
+                _useGps
+                    ? 'Position précise de chaque test'
+                    : 'Désactivé : position approximative (ville), déduite '
+                        "de l'adresse IP",
+                _useGps, (v) {
+              setState(() => _useGps = v);
+              _settings.setUseGps(v);
+            }),
             if (_collect.isSupported) ..._collectSection(),
             ..._privacySection(),
             const SizedBox(height: 24),

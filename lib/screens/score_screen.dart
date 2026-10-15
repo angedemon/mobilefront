@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
@@ -107,7 +108,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
   }
 
   Widget _serverBar() {
-    final loc = (r.location?.isNotEmpty == true) ? r.location! : 'Ouagadougou';
+    // Serveur réellement utilisé pour ce test (et non la ville de
+    // l'utilisateur, affichée ici à tort auparavant).
+    final server = r.server.isNotEmpty && r.server != 'Render.com'
+        ? r.server
+        : SERVER_LABEL;
     return Container(
       color: YeleColors.panel,
       padding: const EdgeInsets.all(14),
@@ -116,7 +121,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
           Container(width: 26, height: 20, color: const Color(0xFF16557E)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('[BF] yele_serveur — $loc',
+            child: Text(server,
                 style: const TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
         ],

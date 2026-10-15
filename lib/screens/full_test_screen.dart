@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../constants/config.dart';
 import '../models/test_selection.dart';
+import '../services/app_settings_service.dart';
 import '../services/device_info_service.dart';
 import '../services/location_service.dart';
 import '../services/network_info_service.dart';
@@ -147,8 +149,15 @@ class _FullTestScreenState extends State<FullTestScreen>
     });
 
     try {
-      final gps = await _location.requestGpsPosition();
+      // GPS seulement si l'utilisateur l'a laissé activé dans les réglages ;
+      // sinon la position approximative de l'IP suffit (niveau ville).
+      final gps = AppSettingsService().useGps
+          ? await _location.requestGpsPosition()
+          : null;
       final ipLoc = await _location.getCurrentLocation();
+      final locationSource = gps != null
+          ? (gps.isMocked ? 'gps_mocked' : 'gps')
+          : (ipLoc != null ? 'ip' : null);
       final status = await _net.getStatus();
       final deviceModel = await _device.getDeviceModel();
       final osVersion = await _device.getOSVersion();
@@ -164,6 +173,7 @@ class _FullTestScreenState extends State<FullTestScreen>
       final result = await _api.runSpeedTest(
         latitude: gps?.latitude ?? ipLoc?.latitude,
         longitude: gps?.longitude ?? ipLoc?.longitude,
+        locationSource: locationSource,
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,
         networkType: status.networkBadge,
         operator: ipLoc?.operator,
@@ -472,10 +482,9 @@ class _FullTestScreenState extends State<FullTestScreen>
           Container(width: 26, height: 20, color: const Color(0xFF5A6B3A)),
           const SizedBox(width: 10),
           const Expanded(
-            child: Text('[BF] yele_serveur — Ouagadougou',
+            child: Text(SERVER_LABEL,
                 style: TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
-          const Text('🇧🇫', style: TextStyle(fontSize: 18)),
         ],
       ),
     );

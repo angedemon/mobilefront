@@ -243,6 +243,15 @@ class SignalCollectorService : Service() {
             json.put("latitude", it.latitude)
             json.put("longitude", it.longitude)
             json.put("accuracy", it.accuracy)
+            // Position fournie par une app de faux GPS : le serveur garde la
+            // relève mais l'écarte de la carte.
+            val mocked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                it.isMock
+            } else {
+                @Suppress("DEPRECATION")
+                it.isFromMockProvider
+            }
+            json.put("locationSource", if (mocked) "gps_mocked" else "gps")
         }
 
         val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager

@@ -240,6 +240,7 @@ class SpeedTestApiService {
   Future<SpeedTestResult> runSpeedTest({
     double? latitude,
     double? longitude,
+    String? locationSource,
     String? location,
     String? networkType,
     String? operator,
@@ -269,6 +270,8 @@ class SpeedTestApiService {
           message: 'Initialisation du test',
         ),
       );
+
+      await _wakeServer(onProgress);
 
       final ipDetails = await getPublicIpInfo();
       ipInfo = ipDetails?.processedString;
@@ -420,12 +423,13 @@ class SpeedTestApiService {
         uploadSpeed: ulMbps,
         ping: pingMs,
         jitter: jitterMs,
-        server: 'Render.com',
+        server: SERVER_LABEL,
         clientIp: _extractIp(ipInfo),
         networkType: networkType,
         operator: operator ?? _extractOperator(ipInfo),
         latitude: latitude,
         longitude: longitude,
+        locationSource: locationSource,
         location: location ?? _extractLocation(ipInfo),
         deviceModel: deviceModel,
         osVersion: osVersion,
@@ -701,15 +705,49 @@ class SpeedTestApiService {
           ).reduce((a, b) => a + b) /
           (values.length - 1);
 
+  /// Attend que le serveur réponde avant toute mesure.
+  ///
+  /// Un serveur endormi (offre gratuite de Render) renvoie des 502 pendant
+  /// une minute environ. Sans cette attente, le premier test après une pause
+  /// échouait, ou mesurait le réveil du serveur au lieu du réseau.
+  Future<void> _wakeServer(SpeedTestProgressCallback? onProgress) async {
+    final deadline =
+        DateTime.now().add(const Duration(seconds: SERVER_WAKE_TIMEOUT_SEC));
+    final slow = Timer(const Duration(seconds: 3), () {
+      onProgress?.call(const SpeedTestProgress(
+        phase: SpeedTestPhase.initializing,
+        message: "Réveil du serveur de test (jusqu'à une minute)…",
+      ));
+    });
+    try {
+      while (true) {
+        try {
+          await _dio.get(
+            '/empty',
+            options: Options(receiveTimeout: const Duration(seconds: 20)),
+          );
+          return;
+        } catch (e) {
+          if (DateTime.now().isAfter(deadline)) {
+            logger.w('Serveur toujours injoignable après réveil: $e');
+            return; // le test échouera de lui-même avec un message clair
+          }
+          await Future.delayed(const Duration(seconds: 5));
+        }
+      }
+    } finally {
+      slow.cancel();
+    }
+  }
+
   // Obtenir la liste des serveurs disponibles.
   Future<List<Map<String, dynamic>>?> getServers() async {
-    logger.i('Serveur unique: Render.com');
     return [
       {
-        'name': 'Render.com Default',
+        'name': SERVER_LABEL,
         'url': baseUrl,
-        'location': 'Render',
-        'sponsor': 'Render Platform',
+        'location': SERVER_LABEL,
+        'sponsor': 'Yélé',
       }
     ];
   }
@@ -742,6 +780,7 @@ class SpeedTestApiService {
             // city/country extraits du JSON ispinfo (source unique).
             'latitude': result.latitude ?? 0.0,
             'longitude': result.longitude ?? 0.0,
+            'locationSource': result.locationSource ?? '',
             'qoeRating': result.qoeRating ?? 0,
             'qoeSatisfaction': result.qoeSatisfaction ?? '',
             // Streaming / navigation web : 0 = test non effectué

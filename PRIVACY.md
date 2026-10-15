@@ -65,4 +65,5 @@ votre adresse IP :
 - retirer votre accord à tout moment depuis Réglages → Confidentialité
 - effacer l'historique enregistré sur votre téléphone depuis Réglages →
   Confidentialité
-- désactiver la localisation dans les paramètres Android
+- désactiver le GPS dans Réglages → Général : seule la position approximative
+  déduite de l'adresse IP (niveau ville) accompagne alors vos mesures

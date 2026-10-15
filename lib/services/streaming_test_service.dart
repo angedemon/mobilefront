@@ -238,6 +238,20 @@ class StreamingTestService {
   /// Renseigné si le lecteur signale une erreur, pour l'expliquer à l'écran.
   String? _playerError;
 
+  /// Code d'erreur YouTube correspondant, pour décider d'un changement de vidéo.
+  int? _playerErrorCode;
+
+  /// Erreurs propres à la vidéo (identifiant invalide, vidéo retirée,
+  /// intégration interdite) : une autre vidéo a toutes les chances de passer.
+  /// L'erreur 5 (lecteur HTML5 incompatible) tient à l'appareil, pas à la vidéo.
+  static const _videoErrorCodes = {2, 100, 101, 150, 152, 153};
+
+  static const _videoIds = [
+    STREAMING_YOUTUBE_VIDEO_ID,
+    ...STREAMING_YOUTUBE_FALLBACK_IDS,
+  ];
+  int _videoIndex = 0;
+
   Future<StreamingTestResult> runTest({
     StreamingControllerCallback? onController,
     StreamingProgressCallback? onProgress,
@@ -277,6 +291,21 @@ class StreamingTestService {
 
       for (int i = 0; i < keys.length; i++) {
         final key = keys[i];
+
+        // Vidéo injouable (retirée, intégration interdite) : on passe à la
+        // vidéo de secours suivante et on reprend la même qualité.
+        if (_playerErrorCode != null &&
+            _videoErrorCodes.contains(_playerErrorCode) &&
+            _videoIndex + 1 < _videoIds.length) {
+          _videoIndex++;
+          logger.w('Streaming: vidéo injouable (code $_playerErrorCode), '
+              'essai de ${_videoIds[_videoIndex]}');
+          _playerError = null;
+          _playerErrorCode = null;
+          _available.clear();
+        }
+        if (_playerError != null) break;
+
         final label = STREAMING_QUALITY_LEVELS[key]!;
 
         // Après le premier palier on connaît les qualités de la vidéo : inutile
@@ -294,7 +323,16 @@ class StreamingTestService {
           onProgress: (frac, msg) =>
               onProgress?.call((i + frac) / keys.length, msg),
         );
-        if (!m.played) continue;
+        if (!m.played) {
+          // Rejoue cette qualité avec la vidéo suivante si l'échec venait de
+          // la vidéo elle-même.
+          if (_playerErrorCode != null &&
+              _videoErrorCodes.contains(_playerErrorCode) &&
+              _videoIndex + 1 < _videoIds.length) {
+            i--;
+          }
+          continue;
+        }
 
         // La qualité demandée n'est qu'une suggestion : `setPlaybackQuality`
         // est ignoré par le lecteur depuis 2019. On range donc la mesure dans
@@ -350,7 +388,8 @@ class StreamingTestService {
     // Lecteur NEUF pour cette qualité : pas d'estimation de bande passante
     // héritée du palier précédent.
     _levelReady = Completer<void>();
-    await controller.runJavaScript('buildLevel("$key", $width, $height)');
+    await controller.runJavaScript(
+        'buildLevel("$key", $width, $height, "${_videoIds[_videoIndex]}")');
     try {
       await _levelReady!.future
           .timeout(const Duration(seconds: STREAMING_LEVEL_TIMEOUT_SEC));
@@ -376,6 +415,12 @@ class StreamingTestService {
           .timeout(const Duration(seconds: STREAMING_LEVEL_TIMEOUT_SEC));
     } on TimeoutException {
       logger.w('Streaming: $label n\'a jamais démarré');
+      await _stopLevel(controller);
+      return _LevelMeasurement.notPlayed;
+    }
+    // Le lecteur a signalé une erreur au lieu de démarrer : inutile de
+    // « mesurer » dix secondes d'écran noir.
+    if (_playerError != null) {
       await _stopLevel(controller);
       return _LevelMeasurement.notPlayed;
     }
@@ -566,6 +611,7 @@ class StreamingTestService {
       case 'error':
         final code = (event['code'] as num?)?.toInt() ?? 0;
         _playerError = _errorMessage(code);
+        _playerErrorCode = code;
         logger.w('Streaming: erreur lecteur YouTube (code $code)');
         // Débloque les attentes en cours : la vidéo est injouable.
         if (_ready?.isCompleted == false) _ready!.complete();
@@ -678,7 +724,7 @@ function onYouTubeIframeAPIReady() { send({ e: 'ready' }); }
 // bande passante d'un palier à l'autre : après un palier en 4K il restait
 // haut, et inversement. Les paliers se contaminaient, d'où des résultats
 // différents d'un test à l'autre.
-function buildLevel(q, w, h) {
+function buildLevel(q, w, h, videoId) {
   if (player && player.destroy) { try { player.destroy(); } catch (e) {} }
   player = null;
   document.getElementById('stage').innerHTML = '<div id="player"></div>';
@@ -690,7 +736,7 @@ function buildLevel(q, w, h) {
   player = new YT.Player('player', {
     width: String(w),
     height: String(h),
-    videoId: '$STREAMING_YOUTUBE_VIDEO_ID',
+    videoId: videoId,
     playerVars: {
       autoplay: 0, controls: 0, disablekb: 1, fs: 0,
       modestbranding: 1, playsinline: 1, rel: 0, iv_load_policy: 3,

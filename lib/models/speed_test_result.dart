@@ -114,6 +114,12 @@ class SpeedTestResult extends HiveObject {
   @HiveField(33)
   String? streamingQualitiesJson;
 
+  // Origine de la position : "gps", "gps_mocked" (application de faux GPS
+  // détectée) ou "ip" (GPS désactivé ou indisponible : position approximative
+  // de l'adresse IP). Le serveur écarte les mesures "gps_mocked" de la carte.
+  @HiveField(34)
+  String? locationSource;
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -148,6 +154,7 @@ class SpeedTestResult extends HiveObject {
     this.simOperator,
     this.cellularTech,
     this.streamingQualitiesJson,
+    this.locationSource,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -168,6 +175,7 @@ class SpeedTestResult extends HiveObject {
       'operator': operator,
       'latitude': latitude,
       'longitude': longitude,
+      'locationSource': locationSource,
       'location': location,
       'deviceModel': deviceModel,
       'osVersion': osVersion,
@@ -251,6 +259,7 @@ class SpeedTestResult extends HiveObject {
           ? null
           : readDouble(['longitude']),
       location: json['location']?.toString(),
+      locationSource: json['locationSource']?.toString(),
       deviceModel: json['deviceModel']?.toString(),
       osVersion: json['osVersion']?.toString(),
       simOperator: json['simOperator']?.toString(),
