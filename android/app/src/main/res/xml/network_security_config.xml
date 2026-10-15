@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Trafic en clair interdit partout : le backend et les sites testés sont en
+     HTTPS. Seule exception, la boucle locale : le test de streaming sert la
+     page du lecteur YouTube depuis http://127.0.0.1:<port>
+     (voir _PlayerHost dans streaming_test_service.dart), car l'IFrame API
+     exige une vraie origine HTTP. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

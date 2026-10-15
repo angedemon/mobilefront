@@ -1,5 +1,6 @@
-# Configuration Codemagic pour Yélé (Flutter iOS)
-# Deux workflows :
+# Configuration Codemagic pour Yélé
+# Workflows :
+#   0) android-release : App Bundle (Play Store) + APK universel, 32 et 64 bits.
 #   1) ios-simulator : build pour le simulateur iOS, SANS compte Apple.
 #      → produit un .app à tester gratuitement sur Appetize.io.
 #   2) ios-unsigned  : build de release SANS signature (vérifie que ça compile).
@@ -9,6 +10,42 @@
 # "ios-release" avec signature automatique + envoi TestFlight.
 
 workflows:
+  android-release:
+    name: Android — App Bundle + APK universel
+    # mac_mini_m2 : seule machine incluse dans l'offre gratuite (linux_x2
+    # est réservé aux offres payantes). Android se compile aussi sur Mac.
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      # Clé de publication : téléverser le keystore dans Codemagic
+      # (Team settings → Code signing identities → Android keystores),
+      # puis décommenter ces lignes avec la référence choisie. Codemagic
+      # injecte alors les variables CM_KEYSTORE_* lues par build.gradle.kts.
+      # Sans clé, le build est signé avec la clé de debug : l'APK s'installe
+      # pour les tests, mais le Play Store refusera l'AAB.
+      # android_signing:
+      #   - yele_upload
+    scripts:
+      - name: Récupérer les dépendances Flutter
+        script: flutter pub get
+      - name: Analyse et tests
+        script: |
+          flutter analyze --no-fatal-infos
+          flutter test
+      # Pas de --split-per-abi : l'APK publié en 1.0.0 ne contenait que
+      # arm64-v8a et refusait de s'installer sur les téléphones 32 bits
+      # (armeabi-v7a), encore nombreux en entrée de gamme. L'APK universel
+      # et l'App Bundle embarquent armeabi-v7a, arm64-v8a et x86_64 ; le
+      # Play Store ne livre ensuite à chaque téléphone que la bonne variante.
+      - name: App Bundle (Play Store)
+        script: flutter build appbundle --release
+      - name: APK universel (installation directe)
+        script: flutter build apk --release
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/flutter-apk/app-release.apk
+
   ios-simulator:
     name: iOS simulateur (test gratuit via Appetize)
     instance_type: mac_mini_m2

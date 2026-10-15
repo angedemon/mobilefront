@@ -209,9 +209,31 @@ moyen d'arrêter la collecte à tout moment.
 ## Compilation
 
 ```bash
-flutter build apk --release            # APK universel
+flutter build apk --release            # APK universel (32 et 64 bits)
 flutter build appbundle --release      # Bundle pour le Play Store
 ```
+
+Ne pas utiliser `--split-per-abi` pour une diffusion directe : l'APK
+`arm64-v8a` seul ne s'installe pas sur les téléphones 32 bits.
+
+**Signature.** Le build release lit sa clé dans `android/key.properties`
+(non commité) :
+
+```properties
+storeFile=../upload-keystore.jks
+storePassword=...
+keyAlias=upload
+keyPassword=...
+```
+
+Sur Codemagic, la clé vient du keystore téléversé (voir le workflow
+`android-release`). Sans clé, le build est signé avec la clé de debug.
+
+**Confidentialité.** Au premier lancement, l'app demande l'accord de
+l'utilisateur avant toute mesure (`ConsentService`). La politique est affichée
+dans l'app et publiée dans [`PRIVACY.md`](PRIVACY.md) : c'est l'URL à donner
+au Play Store. Si les données collectées changent, mettre à jour les deux et
+incrémenter `ConsentService.policyVersion`.
 
 L'intégration continue est décrite dans **`codemagic.yaml`** (Codemagic).
 Identifiant d'application : `com.yele.mobilefront`.
