@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../services/app_settings.dart';
 import '../models/speed_test_result.dart';
 import '../services/network_info_service.dart';
 import '../services/local_storage_service.dart';
@@ -209,8 +210,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         InkWell(
           onTap: () => setState(() => _expandedId = expanded ? null : r.id),
           child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF10161F),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10161F),
               border: Border(bottom: BorderSide(color: YeleColors.testBot)),
             ),
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -284,10 +285,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 14,
                   child: Column(
                     children: [
-                      Text('${r.downloadSpeed.toStringAsFixed(2)} Mb/s',
+                      Text(AppSettings.formatSpeed(r.downloadSpeed),
                           style: const TextStyle(
                               color: Color(0xFFCFD6E0), fontSize: 11)),
-                      Text('${r.uploadSpeed.toStringAsFixed(2)} Mb/s',
+                      Text(AppSettings.formatSpeed(r.uploadSpeed),
                           style: const TextStyle(
                               color: Color(0xFF8FA0B8), fontSize: 10)),
                     ],
@@ -307,7 +308,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       Container(
                         width: 22,
                         height: 22,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: YeleColors.testBot,
                           shape: BoxShape.circle,
                         ),

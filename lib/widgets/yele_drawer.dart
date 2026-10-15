@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/app_settings.dart';
 import '../theme/yele_theme.dart';
 
 /// Tiroir de navigation latéral, repris de la maquette.
@@ -15,15 +16,15 @@ class YeleDrawer extends StatelessWidget {
         child: Column(
           children: [
             _header(),
-            _item(context, Icons.hexagon_outlined, 'Test complet', '/full'),
+            _item(context, Icons.hexagon_outlined, tr('Test complet', 'Full test'), '/full'),
             _item(context, Icons.speed, 'Speed test', '/speed'),
-            _item(context, Icons.public, 'Test de navigation', '/browsing'),
-            _item(context, Icons.play_circle_outline, 'Test de streaming',
+            _item(context, Icons.public, tr('Test de navigation', 'Browsing test'), '/browsing'),
+            _item(context, Icons.play_circle_outline, tr('Test de streaming', 'Streaming test'),
                 '/streaming'),
-            _item(context, Icons.history, 'Historique', '/history'),
-            _item(context, Icons.map_outlined, 'Cartes de couverture',
+            _item(context, Icons.history, tr('Historique', 'History'), '/history'),
+            _item(context, Icons.map_outlined, tr('Cartes de couverture', 'Coverage maps'),
                 '/coverage'),
-            _item(context, Icons.settings, 'Réglages', '/settings'),
+            _item(context, Icons.settings, tr('Réglages', 'Settings'), '/settings'),
           ],
         ),
       ),
@@ -45,14 +46,14 @@ class YeleDrawer extends StatelessWidget {
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Yélé',
+            children: [
+              const Text('Yélé',
                   style: TextStyle(
                       color: YeleColors.ink,
                       fontSize: 17,
                       fontWeight: FontWeight.w700)),
-              Text('Mesure de la qualité réseau',
-                  style: TextStyle(color: YeleColors.muted, fontSize: 12)),
+              Text(tr('Mesure de la qualité réseau', 'Network quality testing'),
+                  style: const TextStyle(color: YeleColors.muted, fontSize: 12)),
             ],
           ),
           const Spacer(),

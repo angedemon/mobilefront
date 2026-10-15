@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../services/app_settings.dart';
 import '../constants/config.dart';
 import '../models/test_selection.dart';
 import '../services/device_info_service.dart';
@@ -312,7 +313,7 @@ class _FullTestScreenState extends State<FullTestScreen>
       title: widget.title,
       route: widget.route,
       body: Container(
-        decoration: const BoxDecoration(gradient: YeleColors.testGradient),
+        decoration: BoxDecoration(gradient: YeleColors.testGradient),
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
@@ -503,15 +504,19 @@ class _FullTestScreenState extends State<FullTestScreen>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(_coreValue.toStringAsFixed(_metricUnit == 'ms' ? 0 : 2),
+        // Débits affichés dans l'unité choisie dans les réglages (ISS-12).
+        Text(
+            _metricUnit == 'ms'
+                ? _coreValue.toStringAsFixed(0)
+                : AppSettings.speedValue(_coreValue),
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.w800, fontSize: 34)),
-        Text(_metricUnit,
+        Text(_metricUnit == 'ms' ? 'ms' : AppSettings.speedUnitLabel,
             style: const TextStyle(color: Colors.white70, fontSize: 13)),
         if (_phaseProgress > 0) ...[
           const SizedBox(height: 6),
           Text('${(_phaseProgress * 100).round()} %',
-              style: const TextStyle(
+              style: TextStyle(
                   color: YeleColors.testTop,
                   fontSize: 13,
                   fontWeight: FontWeight.w700)),
@@ -558,7 +563,9 @@ class _FullTestScreenState extends State<FullTestScreen>
               const SizedBox(height: 4),
               Text(
                   value > 0
-                      ? '${value.toStringAsFixed(unit == 'ms' ? 0 : 1)} $unit'
+                      ? (unit == 'ms'
+                          ? '${value.toStringAsFixed(0)} ms'
+                          : AppSettings.formatSpeed(value, decimals: 1))
                       : '—',
                   style: const TextStyle(
                       fontSize: 12,
@@ -678,7 +685,7 @@ class _GaugePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
         ..strokeCap = StrokeCap.round
-        ..shader = const SweepGradient(
+        ..shader = SweepGradient(
           startAngle: 0,
           endAngle: math.pi * 2,
           colors: [YeleColors.accent, YeleColors.testBot],

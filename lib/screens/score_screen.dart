@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/app_settings.dart';
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../services/network_info_service.dart';
@@ -82,7 +83,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
         title: 'Résultat du test',
         route: '/full',
         body: Container(
-          decoration: const BoxDecoration(gradient: YeleColors.testGradient),
+          decoration: BoxDecoration(gradient: YeleColors.testGradient),
           child: SafeArea(
             top: false,
             child: SingleChildScrollView(
@@ -164,8 +165,10 @@ class _ScoreScreenState extends State<ScoreScreen> {
       color: YeleColors.panel,
       child: Row(
         children: [
-          m('▼ Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-          m('▲ Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s', ''),
+          m('▼ Download', AppSettings.speedValue(r.downloadSpeed),
+              AppSettings.speedUnitLabel, ''),
+          m('▲ Upload', AppSettings.speedValue(r.uploadSpeed),
+              AppSettings.speedUnitLabel, ''),
           m('↔ Latence', r.ping.toStringAsFixed(0), 'ms',
               'Gigue : ${r.jitter.toStringAsFixed(0)} ms'),
         ],
@@ -208,7 +211,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   style: TextStyle(
                       color: q.color, fontSize: 26, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
-              Text('${r.downloadSpeed.toStringAsFixed(1)} Mb/s',
+              Text(AppSettings.formatSpeed(r.downloadSpeed, decimals: 1),
                   style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),

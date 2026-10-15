@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/app_settings.dart';
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
 import '../services/consent_service.dart';
@@ -41,11 +42,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
         color: YeleColors.panel,
         child: ListView(
           children: [
-            _section('Général'),
-            _item('Langue', 'Auto'),
-            _item('Test par défaut au démarrage', 'Test complet'),
-            _item('Unité de débit', 'Mb/s'),
-            _item('Style de fond', 'Vert'),
+            _section(tr('Général', 'General')),
+            // ISS-12 : chaque réglage est enregistré et appliqué.
+            _choice(
+              tr('Langue', 'Language'),
+              AppSettings.language,
+              {
+                'system': tr('Langue du téléphone', 'Phone language'),
+                'fr': 'Français',
+                'en': 'English',
+              },
+              AppSettings.setLanguage,
+            ),
+            _choice(
+              tr('Test par défaut au démarrage', 'Default test at startup'),
+              AppSettings.defaultTest,
+              {
+                '/full': tr('Test complet', 'Full test'),
+                '/speed': 'Speed test',
+                '/browsing': tr('Test de navigation', 'Browsing test'),
+                '/streaming': tr('Test de streaming', 'Streaming test'),
+              },
+              AppSettings.setDefaultTest,
+            ),
+            _choice(
+              tr('Unité de débit', 'Speed unit'),
+              AppSettings.speedUnit,
+              const {'mbps': 'Mb/s', 'kbps': 'kb/s', 'MBps': 'Mo/s'},
+              AppSettings.setSpeedUnit,
+            ),
+            _choice(
+              tr('Style de fond', 'Background style'),
+              AppSettings.backgroundStyle,
+              {
+                'vert': tr('Vert', 'Green'),
+                'bleu': tr('Bleu', 'Blue'),
+                'sombre': tr('Sombre', 'Dark'),
+              },
+              AppSettings.setBackgroundStyle,
+            ),
             if (_collect.isSupported) ..._collectSection(),
             ..._privacySection(),
             const SizedBox(height: 24),
@@ -392,6 +427,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontSize: 15,
                 fontWeight: FontWeight.w700)),
       );
+
+  /// Réglage à choix unique : la valeur courante en sous-titre, une liste
+  /// de choix au toucher. Le choix est enregistré puis l'écran se redessine.
+  Widget _choice(String title, String current, Map<String, String> options,
+      Future<void> Function(String) save) {
+    return InkWell(
+      onTap: () async {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: Text(title),
+            children: [
+              for (final e in options.entries)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, e.key),
+                  child: Row(
+                    children: [
+                      Icon(
+                        e.key == current
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        size: 20,
+                        color: YeleColors.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(e.value),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+        if (picked == null || picked == current) return;
+        await save(picked);
+        if (mounted) setState(() {});
+      },
+      child: _item(title, options[current] ?? current),
+    );
+  }
 
   Widget _item(String title, String sub) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
