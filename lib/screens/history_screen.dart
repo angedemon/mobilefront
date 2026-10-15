@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../services/app_settings.dart';
 import '../models/speed_test_result.dart';
 import '../services/network_info_service.dart';
+import '../services/scoring.dart';
 import '../services/account_service.dart';
 import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
@@ -353,6 +354,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Column(
         children: [
           line('Score global', '${r.globalScore.toStringAsFixed(0)}/100'),
+          // IMP-06 : catégorie de débit ARCEP (D1 à D4).
+          if (r.downloadSpeed > 0)
+            line('Débit ARCEP',
+                Arcep.debitCategory(r.downloadSpeed, r.uploadSpeed) ?? 'sous D1'),
           line('Serveur', r.server),
           line('FAI', r.operator ?? '—'),
           // ISS-03 : informations mobiles seulement pour un test mobile.

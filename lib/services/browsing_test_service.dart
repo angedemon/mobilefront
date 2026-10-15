@@ -47,9 +47,11 @@ class BrowsingTestService {
   final logger = Logger();
 
   // Au-delà : la page compte comme un échec (critère ARCEP)
-  static const int _successThresholdMs = 10000;
+  // Seuil ARCEP : page chargée en moins de 30 s (annexe 3 des licences).
+  static const int _successThresholdMs = 30000;
   // Sécurité absolue par page (réseaux très lents) avant de passer à la suivante
-  static const int _hardTimeoutMs = 20000;
+  // Délai maximal d'attente : au-delà du seuil ARCEP, la page est un échec.
+  static const int _hardTimeoutMs = 31000;
 
   Future<BrowsingTestResult> runTest({
     List<String> pages = BROWSING_REFERENCE_PAGES,
