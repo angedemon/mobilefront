@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import '../services/app_settings.dart';
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
+import '../services/device_tools_service.dart';
+import 'help_screen.dart';
+import 'permissions_screen.dart';
 import '../services/consent_service.dart';
 import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
@@ -24,6 +27,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    DeviceToolsService().isMonitorRunning().then((v) {
+      if (mounted) setState(() => _monitorOn = v);
+    });
     _refreshStatus();
   }
 
@@ -81,8 +87,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
               AppSettings.setBackgroundStyle,
             ),
+            // IMP-02 : paramètres techniques
+            _section(tr('Paramètres techniques', 'Technical settings')),
+            _choice(
+              tr('Durée des mesures de débit', 'Speed test duration'),
+              '${AppSettings.testDurationSec}',
+              {
+                '5': tr('5 s (économe)', '5 s (saves data)'),
+                '10': tr('10 s (recommandé)', '10 s (recommended)'),
+                '15': tr('15 s (plus précis)', '15 s (more accurate)'),
+              },
+              (v) => AppSettings.setTestDurationSec(int.parse(v)),
+            ),
+            _toggle(
+              tr('Tester la 4K en streaming', 'Test 4K streaming'),
+              tr('Environ 15 Mo de plus par test complet',
+                  'About 15 MB more per full test'),
+              AppSettings.streaming4k,
+              (v) async {
+                await AppSettings.setStreaming4k(v);
+                if (mounted) setState(() {});
+              },
+            ),
+            // IMP-08 : consommation de données
+            ..._usageSection(),
             if (_collect.isSupported) ..._collectSection(),
             ..._privacySection(),
+            // IMP-04 / IMP-02 : autorisations et assistance
+            _section(tr('Assistance', 'Help')),
+            _link(tr('Autorisations', 'Permissions'),
+                tr('État de chaque autorisation et usage',
+                    'Status and purpose of each permission'),
+                () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const PermissionsScreen()))),
+            _link(tr('Aide et FAQ', 'Help and FAQ'),
+                tr('Questions fréquentes', 'Frequently asked questions'),
+                () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HelpScreen()))),
+            _link(tr('Contactez-nous', 'Contact us'),
+                tr('Signaler un problème, poser une question',
+                    'Report a problem, ask a question'),
+                () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HelpScreen()))),
             const SizedBox(height: 24),
           ],
         ),
@@ -337,6 +383,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _snack(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ── Consommation (IMP-08) ─────────────────────────────────────────────────
+
+  bool _monitorOn = false;
+
+  List<Widget> _usageSection() {
+    final used = DeviceToolsService.monthUsageKiB();
+    final limit = AppSettings.monthlyLimitMb;
+    return [
+      _section(tr('Consommation de données', 'Data usage')),
+      _item(
+          tr('Ce mois-ci (tests Yélé)', 'This month (Yélé tests)'),
+          DeviceToolsService.formatKiB(used) +
+              (limit > 0
+                  ? ' / ${DeviceToolsService.formatKiB(limit * 1024)}'
+                  : '')),
+      _choice(
+        tr('Seuil mensuel d\'alerte', 'Monthly alert threshold'),
+        '$limit',
+        {
+          '0': tr('Aucun', 'None'),
+          '200': '200 Mo',
+          '500': '500 Mo',
+          '1024': '1 Go',
+          '2048': '2 Go',
+          '5120': '5 Go',
+        },
+        (v) async {
+          await AppSettings.setMonthlyLimitMb(int.parse(v));
+          // Nouveau seuil : l'alerte peut se redéclencher ce mois-ci.
+          await AppSettings.setLastDataAlertMonth('');
+        },
+      ),
+      _toggle(
+        tr('Débit en temps réel', 'Live throughput'),
+        tr('Débit du téléphone dans une notification, chaque seconde',
+            'Phone throughput in a notification, every second'),
+        _monitorOn,
+        (v) async {
+          final tools = DeviceToolsService();
+          if (v) {
+            final ok = await tools.startMonitor();
+            if (!ok) _snack('Autorisez les notifications, puis réessayez.');
+          } else {
+            await tools.stopMonitor();
+          }
+          await Future.delayed(const Duration(milliseconds: 400));
+          final running = await tools.isMonitorRunning();
+          if (mounted) setState(() => _monitorOn = running);
+        },
+      ),
+    ];
   }
 
   // ── Confidentialité ───────────────────────────────────────────────────────

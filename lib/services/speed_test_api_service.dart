@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'app_settings.dart';
 import 'device_identity_service.dart';
 import 'scoring.dart';
 import 'traffic_stats_service.dart';
@@ -334,7 +335,10 @@ class SpeedTestApiService {
           phase: SpeedTestPhase.download,
           message: 'Mesure du téléchargement',
         ));
+        // IMP-02 : durée de phase choisie dans les paramètres techniques.
+        final phase = Duration(seconds: AppSettings.testDurationSec);
         final download = await measureDownloadSpeed(
+          duration: phase,
           // Débit instantané pendant le transfert → la jauge bouge en direct.
           onLive: (mbps, progress) => onProgress?.call(SpeedTestProgress(
             phase: SpeedTestPhase.download,
@@ -358,6 +362,7 @@ class SpeedTestApiService {
           downloadSpeed: dlMbps,
         ));
         final upload = await measureUploadSpeed(
+          duration: phase,
           onLive: (mbps, progress) => onProgress?.call(SpeedTestProgress(
             phase: SpeedTestPhase.upload,
             message: 'Mesure du chargement',

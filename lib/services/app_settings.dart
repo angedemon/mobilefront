@@ -91,6 +91,32 @@ class AppSettings {
   static String get backgroundStyle => _get('backgroundStyle', 'vert');
   static Future<void> setBackgroundStyle(String v) =>
       _set('backgroundStyle', v);
+
+  // ── Paramètres techniques (IMP-02) ────────────────────────────────────────
+
+  /// Durée de chaque phase de débit (download, upload), en secondes.
+  static int get testDurationSec {
+    final v = _get('testDurationSec', 10);
+    return const [5, 10, 15].contains(v) ? v : 10;
+  }
+
+  static Future<void> setTestDurationSec(int v) => _set('testDurationSec', v);
+
+  /// Tester la 4K (2160p) en streaming : la qualité la plus gourmande
+  /// (~15 Mo pour 10 s). Désactivable pour économiser le forfait.
+  static bool get streaming4k => _get('streaming4k', true);
+  static Future<void> setStreaming4k(bool v) => _set('streaming4k', v);
+
+  // ── Consommation (IMP-08) ─────────────────────────────────────────────────
+
+  /// Seuil mensuel d'alerte en Mo ; 0 = pas d'alerte.
+  static int get monthlyLimitMb => _get('monthlyLimitMb', 0);
+  static Future<void> setMonthlyLimitMb(int v) => _set('monthlyLimitMb', v);
+
+  /// Mois (« 2026-10 ») de la dernière alerte, pour n'alerter qu'une fois.
+  static String get lastDataAlertMonth => _get('lastDataAlertMonth', '');
+  static Future<void> setLastDataAlertMonth(String v) =>
+      _set('lastDataAlertMonth', v);
 }
 
 /// Texte dans la langue choisie : français par défaut, anglais si demandé.

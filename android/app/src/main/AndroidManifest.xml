@@ -13,6 +13,9 @@
          dont l'autorisation par Google Play est longue et incertaine. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!-- Moniteur de débit en temps réel (IMP-08) : service de premier plan
+         « usage spécial », lancé par l'utilisateur depuis les réglages. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <!-- Android 13+ : la notification permanente du service doit être autorisée -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -50,6 +53,16 @@
             android:name=".SignalCollectorService"
             android:exported="false"
             android:foregroundServiceType="location"/>
+
+        <!-- Moniteur de débit en temps réel (IMP-08) -->
+        <service
+            android:name=".ThroughputMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Affichage, à la demande de l'utilisateur, du débit réseau du téléphone en temps réel dans une notification"/>
+        </service>
 
         <!-- Reprise de la collecte après redémarrage du téléphone -->
         <receiver

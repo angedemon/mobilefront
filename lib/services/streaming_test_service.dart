@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import 'app_settings.dart';
 import 'scoring.dart';
 import '../constants/config.dart';
 import 'traffic_stats_service.dart';
@@ -258,9 +259,12 @@ class StreamingTestService {
     StreamingProgressCallback? onProgress,
     StreamingRowsCallback? onRows,
   }) async {
-    final keys = STREAMING_QUALITY_LEVELS.keys.toList();
+    // IMP-02 : la 4K peut être désactivée pour économiser le forfait.
+    final levels = Map.of(STREAMING_QUALITY_LEVELS)
+      ..removeWhere((k, _) => k == 'hd2160' && !AppSettings.streaming4k);
+    final keys = levels.keys.toList();
     final rows = <StreamingQualityResult>[
-      for (final label in STREAMING_QUALITY_LEVELS.values)
+      for (final label in levels.values)
         StreamingQualityResult.unavailable(label),
     ];
     // Qualités effectivement servies, dans l'ordre : sert à expliquer à
@@ -307,7 +311,7 @@ class StreamingTestService {
         }
         if (_playerError != null) break;
 
-        final label = STREAMING_QUALITY_LEVELS[key]!;
+        final label = levels[key]!;
 
         // Après le premier palier on connaît les qualités de la vidéo : inutile
         // de perdre 10 s sur une qualité que la source n'a pas.
@@ -344,7 +348,7 @@ class StreamingTestService {
         if (column < 0) continue; // qualité hors tableau (360p, 1440p…)
 
         rows[column] = StreamingQualityResult(
-          label: STREAMING_QUALITY_LEVELS[m.servedKey]!,
+          label: levels[m.servedKey]!,
           reached: true,
           performanceRate: m.performanceRate,
           initialLoadingSec: m.initialLoadingSec,

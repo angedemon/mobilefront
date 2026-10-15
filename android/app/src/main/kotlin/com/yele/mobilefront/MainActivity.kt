@@ -40,6 +40,33 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "getCollectStatus" -> result.success(collectStatus())
+                    // IMP-04 : état et demande des autorisations
+                    "getPermissions" -> result.success(permissionStates())
+                    "requestPermission" -> {
+                        requestPermission(call.argument<String>("name"))
+                        result.success(true)
+                    }
+                    "openAppSettings" -> {
+                        openAppSettings()
+                        result.success(true)
+                    }
+                    // IMP-08 : moniteur de débit et alerte de consommation
+                    "startMonitor" -> result.success(startMonitor())
+                    "stopMonitor" -> {
+                        startService(
+                            Intent(this, ThroughputMonitorService::class.java)
+                                .setAction(ThroughputMonitorService.ACTION_STOP)
+                        )
+                        result.success(true)
+                    }
+                    "isMonitorRunning" -> result.success(ThroughputMonitorService.isRunning)
+                    "notifyDataAlert" -> {
+                        notifyDataAlert(
+                            call.argument<String>("title") ?: "Yélé",
+                            call.argument<String>("text") ?: "",
+                        )
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -101,6 +128,85 @@ class MainActivity : FlutterActivity() {
         val h = String(chars)
         return "${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-" +
             "${h.substring(16, 20)}-${h.substring(20, 32)}"
+    }
+
+    // ── Autorisations (IMP-04) ──────────────────────────────────────────────
+
+    private fun granted(permission: String) =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    /// { location, preciseLocation, phone, notifications } : true si accordée.
+    private fun permissionStates(): Map<String, Boolean> = mapOf(
+        "location" to (granted(Manifest.permission.ACCESS_COARSE_LOCATION) ||
+            granted(Manifest.permission.ACCESS_FINE_LOCATION)),
+        "preciseLocation" to granted(Manifest.permission.ACCESS_FINE_LOCATION),
+        "phone" to granted(Manifest.permission.READ_PHONE_STATE),
+        "notifications" to (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            granted(Manifest.permission.POST_NOTIFICATIONS)),
+    )
+
+    private fun requestPermission(name: String?) {
+        val perms = when (name) {
+            "location", "preciseLocation" -> arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+            "phone" -> arrayOf(Manifest.permission.READ_PHONE_STATE)
+            "notifications" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                return
+            }
+            else -> return
+        }
+        ActivityCompat.requestPermissions(this, perms, 1003)
+    }
+
+    private fun openAppSettings() {
+        startActivity(
+            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(android.net.Uri.fromParts("package", packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+
+    // ── Moniteur de débit et alerte de consommation (IMP-08) ────────────────
+
+    /// false si la notification est refusée (Android 13+) : la demande est
+    /// alors affichée et l'appel est à refaire.
+    private fun startMonitor(): Boolean {
+        if (!permissionStates().getValue("notifications")) {
+            requestPermission("notifications")
+            return false
+        }
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, ThroughputMonitorService::class.java)
+                .setAction(ThroughputMonitorService.ACTION_START),
+        )
+        return true
+    }
+
+    private fun notifyDataAlert(title: String, text: String) {
+        if (!permissionStates().getValue("notifications")) return
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE)
+            as android.app.NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                android.app.NotificationChannel(
+                    "yele_alerts", "Alertes de consommation",
+                    android.app.NotificationManager.IMPORTANCE_DEFAULT,
+                )
+            )
+        }
+        val n = androidx.core.app.NotificationCompat.Builder(this, "yele_alerts")
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .build()
+        manager.notify(4203, n)
     }
 
     // ── Collecte passive en arrière-plan ────────────────────────────────────

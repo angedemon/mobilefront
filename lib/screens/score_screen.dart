@@ -5,6 +5,7 @@ import '../services/app_settings.dart';
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../services/network_info_service.dart';
+import '../services/device_tools_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../theme/yele_theme.dart';
@@ -62,6 +63,22 @@ class _ScoreScreenState extends State<ScoreScreen> {
       // à jour la mesure au lieu d'en créer une seconde.
       r.isUploaded = await _api.uploadTestResult(r);
       await _storage.saveResult(r);
+      // IMP-08 : alerte si ce test fait franchir le seuil mensuel.
+      final alert = await DeviceToolsService().checkMonthlyLimit();
+      if (alert != null && mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Seuil de consommation dépassé'),
+            content: Text(alert),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK')),
+            ],
+          ),
+        );
+      }
     } catch (_) {
       // Échec d'enregistrement non bloquant : renvoyé au prochain démarrage.
     }
