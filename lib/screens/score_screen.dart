@@ -20,7 +20,13 @@ import '../widgets/yele_scaffold.dart';
 /// pas de score en points arbitraire.
 class ScoreScreen extends StatefulWidget {
   final SpeedTestResult result;
-  const ScoreScreen({super.key, required this.result});
+
+  /// Baromètre fourni d'avance (captures d'écran) au lieu d'être demandé au
+  /// serveur.
+  @visibleForTesting
+  final Map<String, dynamic>? barometerOverride;
+
+  const ScoreScreen({super.key, required this.result, this.barometerOverride});
 
   @override
   State<ScoreScreen> createState() => _ScoreScreenState();
@@ -49,6 +55,10 @@ class _ScoreScreenState extends State<ScoreScreen> {
   }
 
   Future<void> _loadBarometer() async {
+    if (widget.barometerOverride != null) {
+      setState(() => _barometer = widget.barometerOverride);
+      return;
+    }
     if (!_speedDone) return;
     final b = await _api.fetchBarometer(r);
     if (mounted && b != null) setState(() => _barometer = b);

@@ -254,6 +254,29 @@ void main() {
     await _shot(tester, '03_test_complet', const FullTestScreen());
     await _shot(tester, '04_bilan', ScoreScreen(result: full),
         size: const Size(360, 1360));
+    // Baromètre : valeurs réelles renvoyées par le serveur pour cette mesure.
+    await _shot(
+        tester,
+        '11_barometre',
+        ScoreScreen(result: full, barometerOverride: const {
+          'sampleSize': 646,
+          'downloadRank': 59.91,
+          'uploadRank': 46.12,
+          'pingRank': 67.03,
+          'operator': 'Orange Burkina Faso',
+          'operatorSampleSize': 180,
+          'operatorAvgDownload': 40.22,
+          'operatorDownloadRank': 55,
+          'nationalAvgDownload': 42.72,
+          'operatorsAvgDownload': {
+            'Agence Nationale de Promotion des TIC (ANPTIC)': 26.49,
+            'Moov Africa': 21.27,
+            'ONATEL (Office National des Telecommunications, PTT)': 21.45,
+            'Orange Burkina Faso': 40.22,
+            'Telecel Faso': 19.35,
+          },
+        }),
+        size: const Size(360, 1900));
     await _shot(tester, '05_historique', const HistoryScreen(),
         size: const Size(360, 1000), before: () async {
       await tester.tap(find.textContaining('Mb/s').first);
