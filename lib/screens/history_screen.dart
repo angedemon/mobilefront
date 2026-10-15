@@ -42,18 +42,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
   bool _isComplet(SpeedTestResult r) =>
       r.hasStreamingTest || r.hasBrowsingTest;
 
-  /// Note de qualité /100 dérivée des mesures réelles (transparente) :
-  /// 60 pts max pour le download, 20 pour l'upload, 20 pour la latence.
-  int _score(SpeedTestResult r) {
-    final dl = (r.downloadSpeed / 50 * 60).clamp(0, 60);
-    final ul = (r.uploadSpeed / 25 * 20).clamp(0, 20);
-    final lat = r.ping <= 20
-        ? 20.0
-        : r.ping >= 300
-            ? 0.0
-            : (300 - r.ping) / 280 * 20;
-    return (dl + ul + lat).round().clamp(0, 100);
-  }
+  /// Score affiché dans la liste : le score global 0-100 (IMP-12), le même
+  /// que dans le détail, le bilan et le tableau de bord. L'ancienne note de
+  /// la liste suivait une autre formule et contredisait le détail.
+  int _score(SpeedTestResult r) => r.globalScore.round();
 
   List<SpeedTestResult> get _filtered =>
       _all.where((r) => _tab == 0 ? _isComplet(r) : !_isComplet(r)).toList();
