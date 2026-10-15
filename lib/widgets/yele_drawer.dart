@@ -24,6 +24,8 @@ class YeleDrawer extends StatelessWidget {
             _item(context, Icons.history, tr('Historique', 'History'), '/history'),
             _item(context, Icons.map_outlined, tr('Cartes de couverture', 'Coverage maps'),
                 '/coverage'),
+            _item(context, Icons.person_outline, tr('Mon compte', 'My account'),
+                '/account'),
             _item(context, Icons.settings, tr('Réglages', 'Settings'), '/settings'),
           ],
         ),

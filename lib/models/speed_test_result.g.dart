@@ -67,13 +67,14 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       address: fields[48] as String?,
       dataUsedKiB: fields[49] as int?,
       deviceId: fields[50] as String?,
+      accountId: fields[51] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(50)
+      ..writeByte(51)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -173,7 +174,9 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..writeByte(49)
       ..write(obj.dataUsedKiB)
       ..writeByte(50)
-      ..write(obj.deviceId);
+      ..write(obj.deviceId)
+      ..writeByte(51)
+      ..write(obj.accountId);
   }
 
   @override

@@ -60,9 +60,19 @@ const List<PolicySection> PRIVACY_POLICY = [
     ],
   ),
   PolicySection(
+    'Compte (facultatif)',
+    paragraphs: [
+      'Si vous créez un compte, Yélé conserve votre adresse e-mail, le nom '
+          'que vous choisissez et un mot de passe chiffré de façon '
+          'irréversible, pour vous permettre de retrouver vos mesures. Vous '
+          'pouvez supprimer votre compte à tout moment depuis « Mon compte » : '
+          'vos mesures restent alors sur la carte, sans lien avec vous.',
+    ],
+  ),
+  PolicySection(
     'Ce que Yélé ne collecte pas',
     bullets: [
-      'votre nom, votre numéro de téléphone ou votre adresse e-mail',
+      'votre numéro de téléphone ; ni votre nom ni votre e-mail sans compte',
       'vos contacts, messages, photos ou fichiers',
       'l\'IMEI ou le numéro de série de votre téléphone',
       'aucune publicité ni outil de suivi publicitaire n\'est intégré',

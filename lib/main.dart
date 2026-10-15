@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'services/account_service.dart';
 import 'services/app_settings.dart';
 import 'models/test_selection.dart';
+import 'screens/account_screen.dart';
 import 'screens/consent_screen.dart';
 import 'screens/coverage_screen.dart';
 import 'screens/full_test_screen.dart';
@@ -27,6 +29,7 @@ Future<void> main() async {
   } catch (_) {
     // Illisible : hasConsented vaudra faux et l'accord sera redemandé.
   }
+  AccountService.reload(); // IMP-03 : compte mémorisé
   final hasConsented = ConsentService().hasConsented;
   if (!hasConsented) {
     // Une collecte activée sous une ancienne version de la politique ne doit
@@ -103,6 +106,7 @@ class YeleApp extends StatelessWidget {
         '/history': (_) => const HistoryScreen(),
         '/coverage': (_) => const CoverageScreen(),
         '/settings': (_) => const SettingsScreen(),
+        '/account': (_) => const AccountScreen(),
       },
     );
   }

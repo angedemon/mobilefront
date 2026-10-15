@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../services/app_settings.dart';
 import '../models/speed_test_result.dart';
 import '../services/network_info_service.dart';
+import '../services/account_service.dart';
 import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
@@ -29,7 +30,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _all = _storage.getResultsSorted();
+    // IMP-03 : chaque compte ne voit que ses mesures ; sans compte, celles
+    // faites sans compte.
+    final account = AccountService.currentId;
+    _all = _storage
+        .getResultsSorted()
+        .where((r) => r.accountId == account)
+        .toList();
   }
 
   bool _isComplet(SpeedTestResult r) =>

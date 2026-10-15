@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'account_service.dart';
 import 'app_settings.dart';
 import 'device_identity_service.dart';
 import 'scoring.dart';
@@ -525,6 +526,8 @@ class SpeedTestApiService {
           return kib < 0 ? null : kib;
         }(),
         deviceId: await DeviceIdentityService().deviceId(),
+        // IMP-03 : mesure rattachée au compte connecté.
+        accountId: AccountService.currentId,
         storedGlobalScore: Scoring.global(
           downloadMbps: dlMbps,
           uploadMbps: ulMbps,
@@ -1006,7 +1009,11 @@ class SpeedTestApiService {
             'browsingScore': result.browsingScore ?? 0.0,
           }),
         },
-        options: Options(contentType: Headers.formUrlEncodedContentType),
+        // IMP-03 : le jeton rattache la mesure au compte côté serveur.
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: AccountService.authHeaders,
+        ),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

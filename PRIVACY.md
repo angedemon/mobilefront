@@ -33,9 +33,17 @@ puissance du signal. Aucun test de débit n'est alors effectué. Cette collecte
 est désactivée par défaut, demande un accord séparé et s'arrête à tout moment
 depuis la notification ou les réglages.
 
+## Compte (facultatif)
+
+Si vous créez un compte, Yélé conserve votre adresse e-mail, le nom que vous
+choisissez et un mot de passe chiffré de façon irréversible, pour vous
+permettre de retrouver vos mesures. Vous pouvez supprimer votre compte à tout
+moment depuis « Mon compte » : vos mesures restent alors sur la carte, sans
+lien avec vous.
+
 ## Ce que Yélé ne collecte pas
 
-- votre nom, votre numéro de téléphone ou votre adresse e-mail
+- votre numéro de téléphone ; ni votre nom ni votre e-mail sans compte
 - vos contacts, messages, photos ou fichiers
 - l'IMEI ou le numéro de série de votre téléphone
 - aucune publicité ni outil de suivi publicitaire n'est intégré

@@ -170,6 +170,10 @@ class SpeedTestResult extends HiveObject {
   @HiveField(50)
   String? deviceId;
 
+  /// Compte connecté au moment du test (IMP-03), null si anonyme.
+  @HiveField(51)
+  String? accountId;
+
   /// Score global 0-100 : la valeur enregistrée, ou recalculée avec la même
   /// formule pour les résultats antérieurs à son introduction.
   double get globalScore =>
@@ -233,6 +237,7 @@ class SpeedTestResult extends HiveObject {
     this.address,
     this.dataUsedKiB,
     this.deviceId,
+    this.accountId,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
