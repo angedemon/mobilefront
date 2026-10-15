@@ -26,8 +26,8 @@ class YeleScaffold extends StatelessWidget {
         iconTheme: const IconThemeData(color: Color(0xFFCFD6E0)),
         title: Row(
           children: [
-            RichText(
-              text: const TextSpan(
+            const Text.rich(
+              TextSpan(
                 style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
