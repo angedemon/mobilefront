@@ -3,6 +3,9 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import '../constants/config.dart';
 
+/// Disponibilité de la localisation pour un test (ISS-09).
+enum GpsAvailability { ok, serviceOff, denied, deniedForever }
+
 /// Service de localisation — GPS réel avec fallback IP
 class LocationService {
   final logger = Logger();
@@ -17,6 +20,38 @@ class LocationService {
       ),
     );
   }
+
+  /// Vérifie, et demande si besoin, l'accès au GPS avant un test.
+  ///
+  /// ISS-09 : une mesure sans position GPS ne peut pas être placée sur la
+  /// carte de couverture ; les tests sont donc bloqués tant que ce n'est pas
+  /// [GpsAvailability.ok].
+  Future<GpsAvailability> ensureGps() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return GpsAvailability.serviceOff;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        return GpsAvailability.deniedForever;
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine) {
+        return GpsAvailability.denied;
+      }
+      return GpsAvailability.ok;
+    } catch (e) {
+      logger.e('Vérification GPS impossible: $e');
+      return GpsAvailability.serviceOff;
+    }
+  }
+
+  Future<bool> openLocationSettings() => Geolocator.openLocationSettings();
+
+  Future<bool> openAppSettings() => Geolocator.openAppSettings();
 
   /// Demande la permission GPS et retourne la position réelle.
   /// Retourne null si l'utilisateur refuse ou si le GPS est indisponible.

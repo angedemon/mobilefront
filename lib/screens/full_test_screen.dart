@@ -5,7 +5,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../constants/config.dart';
 import '../models/test_selection.dart';
-import '../services/app_settings_service.dart';
 import '../services/device_info_service.dart';
 import '../services/location_service.dart';
 import '../services/network_info_service.dart';
@@ -128,6 +127,14 @@ class _FullTestScreenState extends State<FullTestScreen>
 
   Future<void> _start() async {
     if (_stage == _Stage.running) return;
+
+    // ISS-09 : pas de test sans GPS. On vérifie AVANT de lancer quoi que ce
+    // soit, pour ne consommer aucune donnée sur une mesure inexploitable.
+    final gpsState = await _location.ensureGps();
+    if (gpsState != GpsAvailability.ok) {
+      if (mounted) await _showGpsRequired(gpsState);
+      return;
+    }
     setState(() {
       _stage = _Stage.running;
       _phaseLabel = 'Initialisation…';
@@ -140,15 +147,20 @@ class _FullTestScreenState extends State<FullTestScreen>
     });
 
     try {
-      // GPS seulement si l'utilisateur l'a laissé activé dans les réglages ;
-      // sinon la position approximative de l'IP suffit (niveau ville).
-      final gps = AppSettingsService().useGps
-          ? await _location.requestGpsPosition()
-          : null;
+      final gps = await _location.requestGpsPosition();
+      if (gps == null) {
+        // GPS actif mais aucune position obtenue (intérieur, délai dépassé) :
+        // la mesure ne pourrait pas être localisée (ISS-09).
+        if (!mounted) return;
+        setState(() {
+          _stage = _Stage.idle;
+          _phaseLabel = 'Position GPS introuvable. Rapprochez-vous d\'une '
+              'fenêtre ou sortez, puis relancez le test.';
+        });
+        return;
+      }
       final ipLoc = await _location.getCurrentLocation();
-      final locationSource = gps != null
-          ? (gps.isMocked ? 'gps_mocked' : 'gps')
-          : (ipLoc != null ? 'ip' : null);
+      final locationSource = gps.isMocked ? 'gps_mocked' : 'gps';
       final status = await _net.getStatus();
       final deviceModel = await _device.getDeviceModel();
       final osVersion = await _device.getOSVersion();
@@ -162,8 +174,8 @@ class _FullTestScreenState extends State<FullTestScreen>
       }
 
       final result = await _api.runSpeedTest(
-        latitude: gps?.latitude ?? ipLoc?.latitude,
-        longitude: gps?.longitude ?? ipLoc?.longitude,
+        latitude: gps.latitude,
+        longitude: gps.longitude,
         locationSource: locationSource,
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,
         networkType: status.networkBadge,
@@ -215,6 +227,42 @@ class _FullTestScreenState extends State<FullTestScreen>
         _stage = _Stage.idle;
         _phaseLabel = 'Échec du test. Vérifiez la connexion.';
       });
+    }
+  }
+
+  /// Explique pourquoi le test est bloqué et mène au bon réglage (ISS-09).
+  Future<void> _showGpsRequired(GpsAvailability state) async {
+    final serviceOff = state == GpsAvailability.serviceOff;
+    final message = serviceOff
+        ? 'La localisation de votre téléphone est désactivée. Chaque mesure '
+            'est placée sur la carte de couverture : activez le GPS pour '
+            'lancer un test.'
+        : 'Yélé n\'a pas accès à votre position. Autorisez la localisation '
+            'pour lancer un test.';
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('GPS requis'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(serviceOff ? 'Activer le GPS' : 'Autoriser'),
+          ),
+        ],
+      ),
+    );
+    if (open != true) return;
+    if (serviceOff) {
+      await _location.openLocationSettings();
+    } else if (state == GpsAvailability.deniedForever) {
+      await _location.openAppSettings();
+    } else {
+      await _location.ensureGps();
     }
   }
 

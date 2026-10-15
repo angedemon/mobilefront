@@ -65,5 +65,5 @@ votre adresse IP :
 - retirer votre accord à tout moment depuis Réglages → Confidentialité
 - effacer l'historique enregistré sur votre téléphone depuis Réglages →
   Confidentialité
-- désactiver le GPS dans Réglages → Général : seule la position approximative
-  déduite de l'adresse IP (niveau ville) accompagne alors vos mesures
+- désactiver la localisation dans les paramètres Android : les tests sont
+  alors bloqués, car une mesure doit être localisée pour figurer sur la carte
