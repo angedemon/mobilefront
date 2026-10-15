@@ -27,8 +27,30 @@ jobs:
         run: flutter analyze --no-fatal-infos
       - name: Tests
         run: flutter test
+      # Clé de signature stable : sans elle, chaque exécution signe avec une
+      # clé de debug différente, et la connexion Google (liée à l'empreinte
+      # SHA-1 de la clé) échoue. Secrets à définir dans le dépôt :
+      # ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
+      # ANDROID_KEY_PASSWORD.
+      - name: Clé de signature
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "Pas de clé configurée : signature de debug (connexion Google indisponible)."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/app/upload-keystore.jks
+          printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > android/key.properties
       - name: APK universel
-        run: flutter build apk --release
+        # YELE_GOOGLE_CLIENT_ID : variable du dépôt (Settings → Variables).
+        run: >
+          flutter build apk --release
+          --dart-define=YELE_GOOGLE_CLIENT_ID=${{ vars.YELE_GOOGLE_CLIENT_ID }}
       - uses: actions/upload-artifact@v4
         with:
           name: yele-apk

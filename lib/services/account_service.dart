@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../constants/config.dart';
@@ -73,6 +74,42 @@ class AccountService {
         'password': password,
         'name': name.trim(),
       });
+
+  /// Vrai si la connexion Google est configurée dans cette version de l'app.
+  static bool get googleAvailable => GOOGLE_SERVER_CLIENT_ID.isNotEmpty;
+
+  static final GoogleSignIn _google = GoogleSignIn(
+    scopes: const ['email'],
+    // Le jeton est émis pour le client « Web » : c'est lui que le serveur
+    // vérifie (audience).
+    serverClientId:
+        GOOGLE_SERVER_CLIENT_ID.isEmpty ? null : GOOGLE_SERVER_CLIENT_ID,
+  );
+
+  /// Connexion avec le compte Google du téléphone. null si l'utilisateur a
+  /// fermé la fenêtre de choix du compte.
+  Future<Account?> loginWithGoogle() async {
+    GoogleSignInAccount? g;
+    try {
+      g = await _google.signIn();
+    } catch (e) {
+      // Code 10 (DEVELOPER_ERROR) : empreinte SHA-1 de l'APK absente de la
+      // console Google Cloud, ou identifiant client erroné.
+      throw AccountException(
+          'Connexion Google impossible sur cette version de l\'application ($e).');
+    }
+    if (g == null) return null;
+    final idToken = (await g.authentication).idToken;
+    if (idToken == null) {
+      throw const AccountException('Google n\'a pas fourni de jeton. Réessayez.');
+    }
+    try {
+      return await _auth('/api/auth/google', {'idToken': idToken});
+    } finally {
+      // Le compte Yélé est ouvert ; inutile de garder la session Google.
+      await _google.signOut();
+    }
+  }
 
   Future<Account> login(String email, String password) =>
       _auth('/api/auth/login', {'email': email.trim(), 'password': password});
@@ -151,6 +188,8 @@ class AccountService {
         return 'E-mail ou mot de passe incorrect.';
       case 409:
         return 'Un compte existe déjà avec cette adresse e-mail.';
+      case 503:
+        return 'La connexion Google n\'est pas encore activée sur le serveur.';
       case 429:
         return 'Trop de tentatives. Réessayez dans quelques minutes.';
     }
