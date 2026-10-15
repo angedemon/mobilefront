@@ -4,6 +4,8 @@ name: Captures d'écran
 
 on:
   workflow_dispatch:
+  push:
+    branches: [captures-presentation]
 
 jobs:
   captures:
