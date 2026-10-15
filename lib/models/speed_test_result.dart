@@ -120,6 +120,23 @@ class SpeedTestResult extends HiveObject {
   @HiveField(34)
   String? locationSource;
 
+  // ── Radio (ISS-01) et SIM de données (ISS-02) ──
+  // Renseignés seulement pour un test passé par le réseau mobile (ISS-03).
+  @HiveField(35)
+  int? simSlot; // 1 ou 2 : SIM qui porte les données mobiles
+
+  @HiveField(36)
+  int? signalDbm;
+
+  @HiveField(37)
+  int? rsrp; // dBm (4G/5G)
+
+  @HiveField(38)
+  int? rsrq; // dB (4G/5G)
+
+  @HiveField(39)
+  int? sinr; // dB
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -155,6 +172,11 @@ class SpeedTestResult extends HiveObject {
     this.cellularTech,
     this.streamingQualitiesJson,
     this.locationSource,
+    this.simSlot,
+    this.signalDbm,
+    this.rsrp,
+    this.rsrq,
+    this.sinr,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -181,6 +203,11 @@ class SpeedTestResult extends HiveObject {
       'osVersion': osVersion,
       'simOperator': simOperator,
       'cellularTech': cellularTech,
+      'simSlot': simSlot,
+      'signalDbm': signalDbm,
+      'rsrp': rsrp,
+      'rsrq': rsrq,
+      'sinr': sinr,
       'testLog': testLog,
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
@@ -197,6 +224,12 @@ class SpeedTestResult extends HiveObject {
       'browsingScore': browsingScore,
     };
   }
+
+  /// Vrai si le test est passé par le réseau mobile (ISS-03).
+  bool get usedMobile =>
+      networkType != null &&
+      !const {'WiFi', 'Ethernet', 'Web', 'Aucune', 'Inconnu'}
+          .contains(networkType);
 
   /// Vrai si le test de streaming a été effectué
   bool get hasStreamingTest => streamingScore != null && streamingScore! > 0;
@@ -264,6 +297,11 @@ class SpeedTestResult extends HiveObject {
       osVersion: json['osVersion']?.toString(),
       simOperator: json['simOperator']?.toString(),
       cellularTech: json['cellularTech']?.toString(),
+      simSlot: readInt(['simSlot']),
+      signalDbm: readInt(['signalDbm']),
+      rsrp: readInt(['rsrp']),
+      rsrq: readInt(['rsrq']),
+      sinr: readInt(['sinr']),
       streamingQualitiesJson: json['streamingQualities'] as String?,
       imagePath: json['imagePath'] as String?,
       testLog: json['testLog'] as String?,

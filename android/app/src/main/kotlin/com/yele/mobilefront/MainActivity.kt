@@ -7,7 +7,6 @@ import android.content.pm.PackageManager
 import android.net.TrafficStats
 import android.os.Build
 import android.os.Process
-import android.telephony.TelephonyManager
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -127,16 +126,19 @@ class MainActivity : FlutterActivity() {
         )
     }
 
-    /// Retourne { simOperator, mccMnc, cellularTech } — champs null si indisponible.
+    /// Retourne, pour la SIM qui porte les DONNÉES mobiles (ISS-02) :
+    /// { simOperator, mccMnc, cellularTech, simSlot, simCount,
+    ///   signalDbm, signalLevel, rsrp, rsrq, sinr } — champs absents ou null
+    /// si indisponibles (ISS-01).
     private fun telephonyInfo(): Map<String, Any?> {
         val info = HashMap<String, Any?>()
         info["simOperator"] = null
         info["mccMnc"] = null
         info["cellularTech"] = null
 
-        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return info
+        val tm = RadioInfo.dataTelephony(this) ?: return info
         try {
-            // Nom de l'opérateur du réseau mobile (SIM enregistrée sur le réseau).
+            // Nom de l'opérateur sur lequel la SIM de données est enregistrée.
             val name = tm.networkOperatorName?.trim()
             if (!name.isNullOrEmpty()) info["simOperator"] = name
 
@@ -149,15 +151,21 @@ class MainActivity : FlutterActivity() {
             // Ignorer toute erreur constructeur.
         }
 
+        info["simSlot"] = RadioInfo.dataSimSlot(this)
+        info["simCount"] = RadioInfo.activeSimCount(this)
+
+        val signal = try {
+            RadioInfo.signal(this, tm)
+        } catch (e: Exception) {
+            emptyMap()
+        }
+        info.putAll(signal.filterKeys { it != "nr" })
+
         // Techno radio : nécessite READ_PHONE_STATE sur Android 10+.
         try {
-            @Suppress("DEPRECATION")
-            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                tm.dataNetworkType
-            } else {
-                tm.networkType
-            }
-            info["cellularTech"] = techLabel(type)
+            info["cellularTech"] = RadioInfo.techLabel(
+                RadioInfo.dataNetworkType(tm), nrSeen = signal["nr"] == true
+            )
         } catch (e: SecurityException) {
             // Permission manquante : techno inconnue.
         } catch (e: Exception) {
@@ -165,34 +173,5 @@ class MainActivity : FlutterActivity() {
         }
 
         return info
-    }
-
-    private fun techLabel(type: Int): String? {
-        return when (type) {
-            TelephonyManager.NETWORK_TYPE_GPRS,
-            TelephonyManager.NETWORK_TYPE_EDGE,
-            TelephonyManager.NETWORK_TYPE_CDMA,
-            TelephonyManager.NETWORK_TYPE_1xRTT,
-            TelephonyManager.NETWORK_TYPE_IDEN,
-            TelephonyManager.NETWORK_TYPE_GSM -> "2G"
-
-            TelephonyManager.NETWORK_TYPE_UMTS,
-            TelephonyManager.NETWORK_TYPE_EVDO_0,
-            TelephonyManager.NETWORK_TYPE_EVDO_A,
-            TelephonyManager.NETWORK_TYPE_HSDPA,
-            TelephonyManager.NETWORK_TYPE_HSUPA,
-            TelephonyManager.NETWORK_TYPE_HSPA,
-            TelephonyManager.NETWORK_TYPE_EVDO_B,
-            TelephonyManager.NETWORK_TYPE_EHRPD,
-            TelephonyManager.NETWORK_TYPE_HSPAP,
-            TelephonyManager.NETWORK_TYPE_TD_SCDMA -> "3G"
-
-            TelephonyManager.NETWORK_TYPE_LTE,
-            TelephonyManager.NETWORK_TYPE_IWLAN -> "4G"
-
-            TelephonyManager.NETWORK_TYPE_NR -> "5G"
-
-            else -> null
-        }
     }
 }

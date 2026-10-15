@@ -254,7 +254,8 @@ class SignalCollectorService : Service() {
             json.put("locationSource", if (mocked) "gps_mocked" else "gps")
         }
 
-        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        // SIM qui porte les données mobiles (ISS-02), pas la SIM par défaut.
+        val tm = RadioInfo.dataTelephony(this)
         if (tm != null) {
             try {
                 val mccMnc = tm.networkOperator?.trim()?.takeIf { it.isNotEmpty() }
@@ -270,28 +271,21 @@ class SignalCollectorService : Service() {
             } catch (_: Exception) {
                 // Permission ou constructeur récalcitrant : champs omis.
             }
+            RadioInfo.dataSimSlot(this)?.let { json.put("simSlot", it) }
+
+            // Puissance et qualité du signal (dBm, RSRP, RSRQ, SINR — ISS-01).
+            val signal = try {
+                RadioInfo.signal(this, tm)
+            } catch (_: Exception) {
+                emptyMap()
+            }
+            signal.forEach { (k, v) -> if (k != "nr") json.put(k, v) }
 
             try {
-                @Suppress("DEPRECATION")
-                val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    tm.dataNetworkType
-                } else {
-                    tm.networkType
-                }
-                techLabel(type)?.let { json.put("cellularTech", it) }
+                RadioInfo.techLabel(
+                    RadioInfo.dataNetworkType(tm), nrSeen = signal["nr"] == true
+                )?.let { json.put("cellularTech", it) }
             } catch (_: Exception) {
-            }
-
-            // Puissance du signal : API disponible à partir d'Android 9.
-            // En dessous, le champ est simplement absent.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                try {
-                    tm.signalStrength?.cellSignalStrengths?.firstOrNull()?.let { s ->
-                        json.put("signalDbm", s.dbm)
-                        json.put("signalLevel", s.level) // 0 (nul) à 4 (excellent)
-                    }
-                } catch (_: Exception) {
-                }
             }
         }
         return json
@@ -432,33 +426,6 @@ class SignalCollectorService : Service() {
         // Un nom entièrement numérique est un code, pas un nom commercial.
         if (reported.all { it.isDigit() }) return known ?: reported
         return reported
-    }
-
-    private fun techLabel(type: Int): String? = when (type) {
-        TelephonyManager.NETWORK_TYPE_GPRS,
-        TelephonyManager.NETWORK_TYPE_EDGE,
-        TelephonyManager.NETWORK_TYPE_CDMA,
-        TelephonyManager.NETWORK_TYPE_1xRTT,
-        TelephonyManager.NETWORK_TYPE_IDEN,
-        TelephonyManager.NETWORK_TYPE_GSM -> "2G"
-
-        TelephonyManager.NETWORK_TYPE_UMTS,
-        TelephonyManager.NETWORK_TYPE_EVDO_0,
-        TelephonyManager.NETWORK_TYPE_EVDO_A,
-        TelephonyManager.NETWORK_TYPE_HSDPA,
-        TelephonyManager.NETWORK_TYPE_HSUPA,
-        TelephonyManager.NETWORK_TYPE_HSPA,
-        TelephonyManager.NETWORK_TYPE_EVDO_B,
-        TelephonyManager.NETWORK_TYPE_EHRPD,
-        TelephonyManager.NETWORK_TYPE_HSPAP,
-        TelephonyManager.NETWORK_TYPE_TD_SCDMA -> "3G"
-
-        TelephonyManager.NETWORK_TYPE_LTE,
-        TelephonyManager.NETWORK_TYPE_IWLAN -> "4G"
-
-        TelephonyManager.NETWORK_TYPE_NR -> "5G"
-
-        else -> null
     }
 }
 

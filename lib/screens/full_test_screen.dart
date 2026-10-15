@@ -113,17 +113,8 @@ class _FullTestScreenState extends State<FullTestScreen>
     setState(() {
       _connection = status.connectionType;
       _fai = loc?.operator.isNotEmpty == true ? loc!.operator : '—';
-      _mobileNet = _formatMobile(status);
+      _mobileNet = status.mobileLabel;
     });
-  }
-
-  /// « 4G · Orange », « 4G », ou « — » selon ce qui est disponible.
-  String _formatMobile(NetworkStatus s) {
-    final tech = s.cellularTech;
-    final sim = s.simOperator;
-    if (tech == null && (sim == null || sim.isEmpty)) return '—';
-    if (sim != null && sim.isNotEmpty && tech != null) return '$tech · $sim';
-    return tech ?? sim ?? '—';
   }
 
   /// Fixe la cible ; le Ticker se charge d'y amener l'aiguille.
@@ -166,7 +157,7 @@ class _FullTestScreenState extends State<FullTestScreen>
         setState(() {
           _connection = status.connectionType;
           _fai = ipLoc?.operator.isNotEmpty == true ? ipLoc!.operator : _fai;
-          _mobileNet = _formatMobile(status);
+          _mobileNet = status.mobileLabel;
         });
       }
 
@@ -177,8 +168,16 @@ class _FullTestScreenState extends State<FullTestScreen>
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,
         networkType: status.networkBadge,
         operator: ipLoc?.operator,
-        simOperator: status.simOperator,
-        cellularTech: status.cellularTech,
+        // ISS-03 : en Wi-Fi, la SIM n'a pas servi au test. Ses informations
+        // ne sont ni enregistrées ni envoyées, pour ne pas attribuer une
+        // mesure Wi-Fi à un opérateur mobile.
+        simOperator: status.usesMobile ? status.simOperator : null,
+        cellularTech: status.usesMobile ? status.cellularTech : null,
+        simSlot: status.usesMobile ? status.simSlot : null,
+        signalDbm: status.usesMobile ? status.signalDbm : null,
+        rsrp: status.usesMobile ? status.rsrp : null,
+        rsrq: status.usesMobile ? status.rsrq : null,
+        sinr: status.usesMobile ? status.sinr : null,
         deviceModel: deviceModel,
         osVersion: osVersion,
         selection: widget.selection,

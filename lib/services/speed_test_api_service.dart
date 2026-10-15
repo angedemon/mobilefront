@@ -246,6 +246,11 @@ class SpeedTestApiService {
     String? operator,
     String? simOperator,
     String? cellularTech,
+    int? simSlot,
+    int? signalDbm,
+    int? rsrp,
+    int? rsrq,
+    int? sinr,
     String? deviceModel,
     String? osVersion,
     TestSelection selection = const TestSelection(),
@@ -435,6 +440,11 @@ class SpeedTestApiService {
         osVersion: osVersion,
         simOperator: simOperator,
         cellularTech: cellularTech,
+        simSlot: simSlot,
+        signalDbm: signalDbm,
+        rsrp: rsrp,
+        rsrq: rsrq,
+        sinr: sinr,
         // JSON complet -> le backend en extrait city/country/coordonnées IP.
         testLog: ipRawJson ?? ipInfo,
         streamingStartupMs: streaming?.startupMs,
@@ -775,6 +785,12 @@ class SpeedTestApiService {
             'networkType': result.networkType ?? '',
             'simOperator': result.simOperator ?? '',
             'cellularTech': result.cellularTech ?? '',
+            // Radio (ISS-01) et SIM de données (ISS-02) : 0 = non mesuré.
+            'simSlot': result.simSlot ?? 0,
+            'signalDbm': result.signalDbm ?? 0,
+            'rsrp': result.rsrp ?? 0,
+            'rsrq': result.rsrq ?? 0,
+            'sinr': result.sinr ?? 0,
             'deviceModel': result.deviceModel ?? '',
             // location n'est plus transmis : le serveur le compose depuis
             // city/country extraits du JSON ispinfo (source unique).

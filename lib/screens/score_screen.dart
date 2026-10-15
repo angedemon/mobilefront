@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
+import '../services/network_info_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../theme/yele_theme.dart';
@@ -394,27 +395,39 @@ class _ScoreScreenState extends State<ScoreScreen> {
         color: YeleColors.panel,
         border: Border(top: BorderSide(color: YeleColors.primary, width: 2)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          c('Connexion', r.networkType ?? '—'),
-          c('FAI', r.operator ?? '—'),
-          c('Réseau mobile', _mobileLabel),
+          Row(
+            children: [
+              c('Connexion', r.networkType ?? '—'),
+              c('FAI', r.operator ?? '—'),
+              c('Réseau mobile', _mobileLabel),
+            ],
+          ),
+          // ISS-01 : qualité radio de la cellule de service, si mesurée.
+          if (_radioLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_radioLabel!,
+                  style: const TextStyle(
+                      color: YeleColors.field,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ),
         ],
       ),
     );
   }
 
-  /// « 4G · Orange », « 4G », ou « — » selon les mesures disponibles.
+  String? get _radioLabel => formatRadio(
+      rsrp: r.rsrp, rsrq: r.rsrq, sinr: r.sinr, signalDbm: r.signalDbm);
+
+  /// Réseau mobile du test, ou « Non utilisé (Wi-Fi) » (ISS-03).
   String get _mobileLabel {
-    final tech = r.cellularTech;
-    final sim = r.simOperator;
-    if ((tech == null || tech.isEmpty) && (sim == null || sim.isEmpty)) {
-      return '—';
+    if (!r.usedMobile) {
+      return r.networkType == 'WiFi' ? 'Non utilisé (Wi-Fi)' : '—';
     }
-    if (sim != null && sim.isNotEmpty && tech != null && tech.isNotEmpty) {
-      return '$tech · $sim';
-    }
-    return (tech != null && tech.isNotEmpty) ? tech : sim!;
+    return formatMobile(r.cellularTech, r.simOperator, simSlot: r.simSlot);
   }
 
   Widget _actions() {

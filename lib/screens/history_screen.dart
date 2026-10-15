@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/speed_test_result.dart';
+import '../services/network_info_service.dart';
 import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
@@ -353,12 +354,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           line('Serveur', r.server),
           line('FAI', r.operator ?? '—'),
-          if ((r.simOperator ?? '').isNotEmpty || (r.cellularTech ?? '').isNotEmpty)
+          // ISS-03 : informations mobiles seulement pour un test mobile.
+          if (r.usedMobile)
+            line('Réseau mobile',
+                formatMobile(r.cellularTech, r.simOperator, simSlot: r.simSlot))
+          else if (r.networkType == 'WiFi')
+            line('Réseau mobile', 'Non utilisé (Wi-Fi)'),
+          // ISS-01 : RSRP / RSRQ / SINR quand ils ont été mesurés.
+          if (formatRadio(
+                  rsrp: r.rsrp,
+                  rsrq: r.rsrq,
+                  sinr: r.sinr,
+                  signalDbm: r.signalDbm) !=
+              null)
             line(
-                'Réseau mobile',
-                [r.cellularTech, r.simOperator]
-                    .where((e) => (e ?? '').isNotEmpty)
-                    .join(' · ')),
+                'Radio',
+                formatRadio(
+                    rsrp: r.rsrp,
+                    rsrq: r.rsrq,
+                    sinr: r.sinr,
+                    signalDbm: r.signalDbm)!),
           line('Réseau', r.location ?? '—'),
           line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
