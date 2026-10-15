@@ -29,8 +29,8 @@ class ConsentScreen extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 32, 24, 16),
                 children: [
-                  RichText(
-                    text: const TextSpan(
+                  const Text.rich(
+                    TextSpan(
                       style: TextStyle(
                           fontSize: 34,
                           fontWeight: FontWeight.w700,
