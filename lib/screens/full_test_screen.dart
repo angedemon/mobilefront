@@ -208,6 +208,11 @@ class _FullTestScreenState extends State<FullTestScreen>
         autoUpload: false,
       );
 
+      // ISS-10 : adresse lisible, calculée une fois la mesure terminée pour ne
+      // pas perturber le test.
+      result.address =
+          await _location.reverseGeocode(gps.latitude, gps.longitude);
+
       if (!mounted) return;
       setState(() {
         _stage = _Stage.idle;

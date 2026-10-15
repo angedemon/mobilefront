@@ -25,6 +25,19 @@ class TrafficStatsService {
     }
   }
 
+  /// Octets reçus + émis par l'application (IMP-01). null si indisponible.
+  Future<int?> totalBytes() async {
+    final rx = await rxBytes();
+    if (rx == null) return null;
+    try {
+      final tx = await _channel.invokeMethod<int>('getTxBytes');
+      if (tx == null || tx < 0) return rx;
+      return rx + tx;
+    } catch (_) {
+      return rx;
+    }
+  }
+
   /// Volume reçu entre deux relevés, en kibioctets. -1 si non mesurable.
   static int kibBetween(int? before, int? after) {
     if (before == null || after == null || after < before) return -1;

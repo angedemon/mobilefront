@@ -237,6 +237,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
               const SizedBox(height: 2),
               Text('Score ${r.globalScore.toStringAsFixed(0)}/100',
                   style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              // IMP-01 : données consommées par ce test.
+              if (r.dataUsedLabel != null)
+                Text('Données : ${r.dataUsedLabel}',
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 11)),
             ],
           ),
         ),

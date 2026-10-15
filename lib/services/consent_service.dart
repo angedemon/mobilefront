@@ -12,7 +12,9 @@ class ConsentService {
 
   /// Version de la politique de confidentialité. L'incrémenter quand les
   /// données collectées changent : l'accord est alors redemandé à tous.
-  static const int policyVersion = 1;
+  // v2 : identifiant d'appareil anonyme, adresse via OpenStreetMap,
+  // données consommées et mesures radio.
+  static const int policyVersion = 2;
 
   static const String _boxName = 'settings';
   static const String _versionKey = 'consentPolicyVersion';

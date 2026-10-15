@@ -158,6 +158,18 @@ class SpeedTestResult extends HiveObject {
   @HiveField(47)
   double? storedGlobalScore;
 
+  /// Adresse lisible du lieu de mesure (ISS-10), déduite des coordonnées GPS.
+  @HiveField(48)
+  String? address;
+
+  /// Données consommées par le test, en Kio (IMP-01). null si non mesuré.
+  @HiveField(49)
+  int? dataUsedKiB;
+
+  /// Identifiant d'appareil anonyme et stable (IMP-13).
+  @HiveField(50)
+  String? deviceId;
+
   /// Score global 0-100 : la valeur enregistrée, ou recalculée avec la même
   /// formule pour les résultats antérieurs à son introduction.
   double get globalScore =>
@@ -218,6 +230,9 @@ class SpeedTestResult extends HiveObject {
     this.pingMax,
     this.packetLoss,
     this.storedGlobalScore,
+    this.address,
+    this.dataUsedKiB,
+    this.deviceId,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -257,6 +272,9 @@ class SpeedTestResult extends HiveObject {
       'pingMax': pingMax,
       'packetLoss': packetLoss,
       'globalScore': globalScore,
+      'address': address,
+      'dataUsedKiB': dataUsedKiB,
+      'deviceId': deviceId,
       'testLog': testLog,
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
@@ -272,6 +290,17 @@ class SpeedTestResult extends HiveObject {
       'browsingPagesTested': browsingPagesTested,
       'browsingScore': browsingScore,
     };
+  }
+
+  /// « 12,4 Mo » / « 850 Ko » : données consommées par le test (IMP-01).
+  String? get dataUsedLabel {
+    final kib = dataUsedKiB;
+    if (kib == null || kib < 0) return null;
+    if (kib >= 1024 * 1024) {
+      return '${(kib / 1024 / 1024).toStringAsFixed(2)} Go';
+    }
+    if (kib >= 1024) return '${(kib / 1024).toStringAsFixed(1)} Mo';
+    return '$kib Ko';
   }
 
   /// Vrai si le test est passé par le réseau mobile (ISS-03).

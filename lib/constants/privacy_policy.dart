@@ -7,7 +7,7 @@
 const String PRIVACY_CONTACT_EMAIL = '';
 
 /// Date de dernière mise à jour affichée en tête de la politique.
-const String PRIVACY_POLICY_DATE = '15 octobre 2026';
+const String PRIVACY_POLICY_DATE = '15 octobre 2026 (v2)';
 
 class PolicySection {
   final String title;
@@ -24,7 +24,10 @@ const List<String> CONSENT_SUMMARY = [
   'votre position GPS au moment du test',
   'votre opérateur, le type de connexion et la technologie (2G à 5G)',
   'votre adresse IP publique et le fournisseur d\'accès qui lui correspond',
-  'le modèle de votre téléphone',
+  'le modèle de votre téléphone et un identifiant anonyme de l’appareil, '
+      'calculé de façon irréversible (il ne révèle ni votre identité ni '
+      'votre numéro)',
+  'les données consommées par le test et la qualité du signal radio',
   'votre avis sur la qualité ressentie, si vous le donnez',
 ];
 
@@ -87,7 +90,9 @@ const List<PolicySection> PRIVACY_POLICY = [
     bullets: [
       'Render, qui héberge le serveur de mesure, et MongoDB Atlas, qui '
           'stocke les résultats',
-      'OpenStreetMap, qui fournit le fond de la carte de couverture',
+      'OpenStreetMap, qui fournit le fond de la carte de couverture et '
+          'traduit la position d’un test en adresse lisible pour votre '
+          'historique',
       'YouTube, pour le test de streaming, ainsi que les sites chargés par '
           'le test de navigation (Google, Wikipédia, Facebook, Bing, '
           'lefaso.net)',

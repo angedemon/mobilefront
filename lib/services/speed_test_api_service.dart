@@ -8,7 +8,9 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'device_identity_service.dart';
 import 'scoring.dart';
+import 'traffic_stats_service.dart';
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
@@ -315,6 +317,9 @@ class SpeedTestApiService {
 
       await _wakeServer(onProgress);
 
+      // IMP-01 : compteur d'octets de l'app avant les mesures.
+      final bytesBefore = await TrafficStatsService().totalBytes();
+
       final ipDetails = await getPublicIpInfo();
       ipInfo = ipDetails?.processedString;
       ipRawJson = ipDetails?.rawJson;
@@ -478,6 +483,8 @@ class SpeedTestApiService {
         }
       }
 
+      final bytesAfter = await TrafficStatsService().totalBytes();
+
       final result = SpeedTestResult(
         downloadSpeed: dlMbps,
         uploadSpeed: ulMbps,
@@ -507,6 +514,12 @@ class SpeedTestApiService {
         pingMin: pingMin,
         pingMax: pingMax,
         packetLoss: packetLoss,
+        // IMP-01 : octets reçus + émis pendant toutes les mesures.
+        dataUsedKiB: () {
+          final kib = TrafficStatsService.kibBetween(bytesBefore, bytesAfter);
+          return kib < 0 ? null : kib;
+        }(),
+        deviceId: await DeviceIdentityService().deviceId(),
         storedGlobalScore: Scoring.global(
           downloadMbps: dlMbps,
           uploadMbps: ulMbps,
@@ -923,6 +936,10 @@ class SpeedTestApiService {
             'packetLoss': result.packetLoss ?? -1,
             // Score global 0-100 (IMP-12), même formule que le tableau de bord.
             'globalScore': result.globalScore,
+            // IMP-01 / IMP-13 : données consommées (Kio, -1 = non mesuré) et
+            // identifiant d'appareil anonyme.
+            'dataUsedKiB': result.dataUsedKiB ?? -1,
+            'deviceId': result.deviceId ?? '',
             'deviceModel': result.deviceModel ?? '',
             // location n'est plus transmis : le serveur le compose depuis
             // city/country extraits du JSON ispinfo (source unique).

@@ -399,6 +399,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (r.hasBrowsingTest)
             line('Navigation',
                 '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
+          // ISS-10 : adresse lisible en plus des coordonnées.
+          if ((r.address ?? '').isNotEmpty) line('Adresse', r.address!),
+          // IMP-01
+          if (r.dataUsedLabel != null)
+            line('Données consommées', r.dataUsedLabel!),
           if ((r.latitude ?? 0) != 0)
             line('Coord.',
                 '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}'),

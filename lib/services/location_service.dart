@@ -49,6 +49,45 @@ class LocationService {
     }
   }
 
+  /// Adresse lisible des coordonnées (ISS-10) : « Avenue Kwame Nkrumah,
+  /// Koulouba, Ouagadougou », ou null si indisponible.
+  ///
+  /// Géocodage inverse OpenStreetMap (Nominatim), une seule requête par
+  /// test, en fin de mesure : leur règlement limite à une requête par
+  /// seconde et exige un User-Agent identifiant l'application.
+  Future<String?> reverseGeocode(double lat, double lng) async {
+    try {
+      final res = await Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+        headers: {'User-Agent': 'Yele/1.0 (mesure de la qualite reseau)'},
+      )).get(
+        'https://nominatim.openstreetmap.org/reverse',
+        queryParameters: {
+          'format': 'jsonv2',
+          'lat': lat,
+          'lon': lng,
+          'zoom': 17,
+          'accept-language': 'fr',
+        },
+      );
+      final a = (res.data as Map?)?['address'] as Map?;
+      if (a == null) return null;
+      final street = a['road'] ?? a['pedestrian'] ?? a['neighbourhood'];
+      final area = a['suburb'] ?? a['quarter'] ?? a['village'];
+      final city = a['city'] ?? a['town'] ?? a['municipality'] ?? a['county'];
+      final parts = [street, area, city]
+          .whereType<String>()
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList();
+      return parts.isEmpty ? null : parts.join(', ');
+    } catch (e) {
+      logger.w('Géocodage inverse indisponible: $e');
+      return null;
+    }
+  }
+
   Future<bool> openLocationSettings() => Geolocator.openLocationSettings();
 
   Future<bool> openAppSettings() => Geolocator.openAppSettings();

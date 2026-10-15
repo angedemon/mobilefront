@@ -27,6 +27,8 @@ class MainActivity : FlutterActivity() {
                     "getTelephony" -> result.success(telephonyInfo())
                     "requestPhonePermission" -> result.success(ensurePhonePermission())
                     "getRxBytes" -> result.success(rxBytes())
+                    "getTxBytes" -> result.success(txBytes())
+                    "getDeviceUuid" -> result.success(deviceUuid())
                     "startCollect" -> {
                         val interval = call.argument<Int>("intervalMinutes")
                             ?: SignalCollectorService.DEFAULT_INTERVAL_MIN
@@ -64,6 +66,41 @@ class MainActivity : FlutterActivity() {
     private fun rxBytes(): Long {
         val bytes = TrafficStats.getUidRxBytes(Process.myUid())
         return if (bytes == TrafficStats.UNSUPPORTED.toLong()) -1L else bytes
+    }
+
+    /// Octets émis par l'application (IMP-01 : données consommées par un test
+    /// = octets reçus + émis). -1 si le compteur est indisponible.
+    private fun txBytes(): Long {
+        val bytes = TrafficStats.getUidTxBytes(Process.myUid())
+        return if (bytes == TrafficStats.UNSUPPORTED.toLong()) -1L else bytes
+    }
+
+    /// Identifiant d'appareil anonyme et stable (IMP-13).
+    ///
+    /// ANDROID_ID est propre à l'appareil ET à la clé de signature de l'app
+    /// (Android 8+) : il survit à une réinstallation et ne permet pas de
+    /// suivre l'appareil d'une application à l'autre. On n'en transmet qu'une
+    /// empreinte SHA-256 salée, mise en forme d'UUID : impossible d'en
+    /// retrouver la valeur d'origine. Il change après une réinitialisation
+    /// d'usine, ce qui est voulu.
+    private fun deviceUuid(): String? {
+        val androidId = try {
+            android.provider.Settings.Secure.getString(
+                contentResolver, android.provider.Settings.Secure.ANDROID_ID
+            )
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("yele-device:$androidId".toByteArray(Charsets.UTF_8))
+        val hex = digest.take(16).joinToString("") { "%02x".format(it) }
+        // Mise en forme 8-4-4-4-12, version 5 (dérivé d'un nom) et variante RFC.
+        val chars = hex.toCharArray()
+        chars[12] = '5'
+        chars[16] = "89ab"[(Character.digit(chars[16], 16) and 0x3)]
+        val h = String(chars)
+        return "${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-" +
+            "${h.substring(16, 20)}-${h.substring(20, 32)}"
     }
 
     // ── Collecte passive en arrière-plan ────────────────────────────────────
