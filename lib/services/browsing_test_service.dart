@@ -67,18 +67,16 @@ class BrowsingTestService {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
-            if (pageCompleter != null && !pageCompleter!.isCompleted) {
-              pageCompleter!.complete();
-            }
+            final c = pageCompleter;
+            if (c != null && !c.isCompleted) c.complete();
           },
           onWebResourceError: (error) {
             // On n'échoue que sur l'erreur du document principal, pas sur une
             // sous-ressource secondaire (pub, tracker bloqué, etc.).
-            if (error.isForMainFrame == true &&
-                pageCompleter != null &&
-                !pageCompleter!.isCompleted) {
+            final c = pageCompleter;
+            if (error.isForMainFrame == true && c != null && !c.isCompleted) {
               currentPageFailed = true;
-              pageCompleter!.complete();
+              c.complete();
             }
           },
         ),
@@ -91,14 +89,15 @@ class BrowsingTestService {
         final url = pages[i];
         onProgress?.call(i / pages.length, 'Chargement de ${_hostOf(url)}');
 
-        pageCompleter = Completer<void>();
+        final completer = Completer<void>();
+        pageCompleter = completer;
         currentPageFailed = false;
         final stopwatch = Stopwatch()..start();
 
         await controller.loadRequest(Uri.parse(url));
 
         try {
-          await pageCompleter!.future
+          await completer.future
               .timeout(const Duration(milliseconds: _hardTimeoutMs));
         } on TimeoutException {
           currentPageFailed = true;
