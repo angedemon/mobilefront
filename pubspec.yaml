@@ -16,6 +16,9 @@ dependencies:
   # Networking & API
   dio: ^5.3.0
 
+  # Connexion avec Google (comptes utilisateurs, IMP-03)
+  google_sign_in: ^6.2.1
+
   # Navigateur intégré : test de navigation web ET lecteur YouTube du test
   # de streaming. Les implémentations de plateforme sont des dépendances
   # directes car on les configure explicitement (autoplay Android sans geste

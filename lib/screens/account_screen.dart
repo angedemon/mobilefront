@@ -50,6 +50,20 @@ class _AuthFormsState extends State<_AuthForms> {
     super.dispose();
   }
 
+  Future<void> _google() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await AccountService().loginWithGoogle();
+    } on AccountException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _submit() async {
     setState(() {
       _busy = true;
@@ -83,6 +97,33 @@ class _AuthFormsState extends State<_AuthForms> {
           style: TextStyle(color: YeleColors.muted, fontSize: 13),
         ),
         const SizedBox(height: 16),
+        // Connexion Google : le plus simple, aucun mot de passe à retenir.
+        if (AccountService.googleAvailable) ...[
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _google,
+            icon: const Text('G',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF4285F4))),
+            label: const Text('Continuer avec Google'),
+            style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                backgroundColor: Colors.white),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 14),
+            child: Row(children: [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10),
+                child: Text('ou avec votre e-mail',
+                    style: TextStyle(color: YeleColors.muted, fontSize: 12)),
+              ),
+              Expanded(child: Divider()),
+            ]),
+          ),
+        ],
         if (_register)
           TextField(
             controller: _name,

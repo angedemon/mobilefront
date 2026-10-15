@@ -13,6 +13,13 @@ const String API_BASE_URL = String.fromEnvironment('YELE_API_URL',
 // datacenter en Afrique.
 const String SERVER_LABEL = String.fromEnvironment('YELE_SERVER_LABEL',
     defaultValue: 'yele_serveur — Render (hors Afrique)');
+// Connexion avec Google : identifiant client OAuth de type « Application
+// Web » (xxx.apps.googleusercontent.com), le même que SPEEDTEST_GOOGLE_CLIENT_ID
+// côté serveur. Fourni à la compilation :
+//   --dart-define=YELE_GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+// Vide : le bouton « Continuer avec Google » n'est pas affiché.
+const String GOOGLE_SERVER_CLIENT_ID =
+    String.fromEnvironment('YELE_GOOGLE_CLIENT_ID', defaultValue: '');
 // Délai maximal de réveil du serveur. L'offre gratuite de Render endort le
 // service après 15 min d'inactivité ; il met 60 à 90 s à répondre ensuite.
 const int SERVER_WAKE_TIMEOUT_SEC = 90;
