@@ -376,8 +376,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     sinr: r.sinr,
                     signalDbm: r.signalDbm)!),
           line('Réseau', r.location ?? '—'),
-          line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
+          // ISS-06 : min / moy / max quand ils ont été mesurés.
+          if ((r.downloadMax ?? 0) > 0)
+            line('Download min / moy / max',
+                '${AppSettings.speedValue(r.downloadMin!, decimals: 1)} / ${AppSettings.speedValue(r.downloadSpeed, decimals: 1)} / ${AppSettings.formatSpeed(r.downloadMax!, decimals: 1)}'),
+          if ((r.uploadMax ?? 0) > 0)
+            line('Upload min / moy / max',
+                '${AppSettings.speedValue(r.uploadMin!, decimals: 1)} / ${AppSettings.speedValue(r.uploadSpeed, decimals: 1)} / ${AppSettings.formatSpeed(r.uploadMax!, decimals: 1)}'),
+          if ((r.pingMax ?? 0) > 0)
+            line('Latence min / moy / max',
+                '${r.pingMin!.toStringAsFixed(0)} / ${r.ping.toStringAsFixed(0)} / ${r.pingMax!.toStringAsFixed(0)} ms')
+          else
+            line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
+          // IMP-07
+          if (r.packetLoss != null)
+            line('Perte de paquets', '${r.packetLoss!.toStringAsFixed(1)} %'),
           if (r.hasStreamingTest)
             line('Streaming',
                 '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),

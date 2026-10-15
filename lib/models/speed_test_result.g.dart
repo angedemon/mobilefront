@@ -56,13 +56,20 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       rsrp: fields[37] as int?,
       rsrq: fields[38] as int?,
       sinr: fields[39] as int?,
+      downloadMin: fields[40] as double?,
+      downloadMax: fields[41] as double?,
+      uploadMin: fields[42] as double?,
+      uploadMax: fields[43] as double?,
+      pingMin: fields[44] as double?,
+      pingMax: fields[45] as double?,
+      packetLoss: fields[46] as double?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(39)
+      ..writeByte(46)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -140,7 +147,21 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..writeByte(38)
       ..write(obj.rsrq)
       ..writeByte(39)
-      ..write(obj.sinr);
+      ..write(obj.sinr)
+      ..writeByte(40)
+      ..write(obj.downloadMin)
+      ..writeByte(41)
+      ..write(obj.downloadMax)
+      ..writeByte(42)
+      ..write(obj.uploadMin)
+      ..writeByte(43)
+      ..write(obj.uploadMax)
+      ..writeByte(44)
+      ..write(obj.pingMin)
+      ..writeByte(45)
+      ..write(obj.pingMax)
+      ..writeByte(46)
+      ..write(obj.packetLoss);
   }
 
   @override

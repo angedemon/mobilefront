@@ -154,6 +154,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   style: const TextStyle(fontSize: 13, color: YeleColors.field)),
               const SizedBox(height: 3),
               Text(sub,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 11, color: YeleColors.muted)),
             ],
           ),
@@ -165,15 +166,34 @@ class _ScoreScreenState extends State<ScoreScreen> {
       color: YeleColors.panel,
       child: Row(
         children: [
+          // Valeur affichée = moyenne ; min et max en dessous (ISS-06).
           m('▼ Download', AppSettings.speedValue(r.downloadSpeed),
-              AppSettings.speedUnitLabel, ''),
+              AppSettings.speedUnitLabel,
+              _range(r.downloadMin, r.downloadMax, speed: true)),
           m('▲ Upload', AppSettings.speedValue(r.uploadSpeed),
-              AppSettings.speedUnitLabel, ''),
-          m('↔ Latence', r.ping.toStringAsFixed(0), 'ms',
-              'Gigue : ${r.jitter.toStringAsFixed(0)} ms'),
+              AppSettings.speedUnitLabel,
+              _range(r.uploadMin, r.uploadMax, speed: true)),
+          m(
+              '↔ Latence',
+              r.ping.toStringAsFixed(0),
+              'ms',
+              [
+                _range(r.pingMin, r.pingMax),
+                'Gigue ${r.jitter.toStringAsFixed(0)} ms',
+                if (r.packetLoss != null)
+                  'Perte ${r.packetLoss!.toStringAsFixed(1)} %',
+              ].where((e) => e.isNotEmpty).join('\n')),
         ],
       ),
     );
+  }
+
+  /// « Min 3.2 · Max 15.8 », vide si non mesuré (anciens résultats).
+  String _range(double? lo, double? hi, {bool speed = false}) {
+    if (lo == null || hi == null || hi <= 0) return '';
+    String f(double v) =>
+        speed ? AppSettings.speedValue(v, decimals: 1) : v.toStringAsFixed(0);
+    return 'Min ${f(lo)} · Max ${f(hi)}';
   }
 
   Widget _qualityBand() {

@@ -137,6 +137,22 @@ class SpeedTestResult extends HiveObject {
   @HiveField(39)
   int? sinr; // dB
 
+  // ── Min / Max (ISS-06) et perte de paquets (IMP-07) ──
+  @HiveField(40)
+  double? downloadMin; // Mb/s
+  @HiveField(41)
+  double? downloadMax;
+  @HiveField(42)
+  double? uploadMin;
+  @HiveField(43)
+  double? uploadMax;
+  @HiveField(44)
+  double? pingMin; // ms
+  @HiveField(45)
+  double? pingMax;
+  @HiveField(46)
+  double? packetLoss; // %
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -177,6 +193,13 @@ class SpeedTestResult extends HiveObject {
     this.rsrp,
     this.rsrq,
     this.sinr,
+    this.downloadMin,
+    this.downloadMax,
+    this.uploadMin,
+    this.uploadMax,
+    this.pingMin,
+    this.pingMax,
+    this.packetLoss,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -208,6 +231,13 @@ class SpeedTestResult extends HiveObject {
       'rsrp': rsrp,
       'rsrq': rsrq,
       'sinr': sinr,
+      'downloadMin': downloadMin,
+      'downloadMax': downloadMax,
+      'uploadMin': uploadMin,
+      'uploadMax': uploadMax,
+      'pingMin': pingMin,
+      'pingMax': pingMax,
+      'packetLoss': packetLoss,
       'testLog': testLog,
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
