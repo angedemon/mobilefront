@@ -12,6 +12,7 @@ import 'screens/settings_screen.dart';
 import 'services/background_collection_service.dart';
 import 'services/consent_service.dart';
 import 'services/local_storage_service.dart';
+import 'services/speed_test_api_service.dart';
 import 'theme/yele_theme.dart';
 
 Future<void> main() async {
@@ -33,6 +34,13 @@ Future<void> main() async {
     await BackgroundCollectionService().stop();
   }
   runApp(YeleApp(hasConsented: hasConsented));
+
+  // ISS-08 : renvoie en arrière-plan les mesures jamais transmises.
+  if (hasConsented) {
+    SpeedTestApiService()
+        .uploadPending(LocalStorageService().getAllResults())
+        .ignore();
+  }
 }
 
 class YeleApp extends StatelessWidget {

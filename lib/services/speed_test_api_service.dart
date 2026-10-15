@@ -884,6 +884,41 @@ class SpeedTestApiService {
     }
   }
 
+  /// Renvoie au serveur les résultats enregistrés mais jamais envoyés
+  /// (hors ligne, serveur en veille, application fermée trop tôt) — ISS-08.
+  /// Retourne le nombre de résultats envoyés.
+  Future<int> uploadPending(List<SpeedTestResult> results) async {
+    var sent = 0;
+    for (final r in results.where((r) => !r.isUploaded)) {
+      if (await uploadTestResult(r)) {
+        r.isUploaded = true;
+        try {
+          await r.save();
+        } catch (_) {
+          // Résultat hors de la boîte Hive : rien à mettre à jour.
+        }
+        sent++;
+      }
+    }
+    return sent;
+  }
+
+  /// Position du résultat parmi les autres tests (IMP-09), ou null.
+  Future<Map<String, dynamic>?> fetchBarometer(SpeedTestResult r) async {
+    try {
+      final res = await _dio.get('/api/dashboard/barometer', queryParameters: {
+        'download': r.downloadSpeed,
+        'upload': r.uploadSpeed,
+        'ping': r.ping,
+        if ((r.operator ?? '').isNotEmpty) 'operator': r.operator,
+      });
+      return Map<String, dynamic>.from(res.data as Map);
+    } catch (e) {
+      logger.w('Baromètre indisponible: $e');
+      return null;
+    }
+  }
+
   // Obtenir la liste des serveurs disponibles.
   Future<List<Map<String, dynamic>>?> getServers() async {
     return [
@@ -940,6 +975,9 @@ class SpeedTestApiService {
             // identifiant d'appareil anonyme.
             'dataUsedKiB': result.dataUsedKiB ?? -1,
             'deviceId': result.deviceId ?? '',
+            // ISS-08 : même identifiant à chaque envoi du même test, pour
+            // que le serveur mette à jour au lieu de dupliquer.
+            'testId': result.id,
             'deviceModel': result.deviceModel ?? '',
             // location n'est plus transmis : le serveur le compose depuis
             // city/country extraits du JSON ispinfo (source unique).
