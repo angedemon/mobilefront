@@ -7,7 +7,7 @@
 // Le débit et surtout la latence se mesurent JUSQU'À ce serveur : hébergé
 // hors d'Afrique, il ajoute le trajet intercontinental à chaque mesure.
 const String API_BASE_URL = String.fromEnvironment('YELE_API_URL',
-    defaultValue: 'https://mobiletest-j0c6.onrender.com');
+    defaultValue: 'https://mobiletest-lw4k.onrender.com');
 // Libellé affiché sous la jauge et dans le bilan. Il doit dire où se trouve
 // réellement le serveur : l'instance par défaut est chez Render, sans
 // datacenter en Afrique.
