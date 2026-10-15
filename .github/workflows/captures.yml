@@ -1,0 +1,25 @@
+# Captures d'écran de l'application (présentation des modifications).
+# Lancement manuel : Actions → « Captures d'écran » → Run workflow.
+name: Captures d'écran
+
+on:
+  workflow_dispatch:
+
+jobs:
+  captures:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Rendu des écrans
+        run: flutter test test/screenshots --dart-define=YELE_GOOGLE_CLIENT_ID=demo
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-app
+          path: build/captures/
+          retention-days: 14

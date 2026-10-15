@@ -26,7 +26,7 @@ jobs:
       - name: Analyse
         run: flutter analyze --no-fatal-infos
       - name: Tests
-        run: flutter test
+        run: flutter test --exclude-tags captures
       # Clé de signature stable : sans elle, chaque exécution signe avec une
       # clé de debug différente, et la connexion Google (liée à l'empreinte
       # SHA-1 de la clé) échoue. Secrets à définir dans le dépôt :
