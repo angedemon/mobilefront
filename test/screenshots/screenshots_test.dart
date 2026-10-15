@@ -43,6 +43,16 @@ Future<void> _loadFonts() async {
     }
   }
   await roboto.load();
+  // Police par défaut des tests (« FlutterTest ») : les textes sans famille
+  // explicite (logo en RichText, symboles) s'afficheraient en carrés.
+  final fallback = FontLoader('FlutterTest');
+  for (final f in Directory(dir).listSync().whereType<File>()) {
+    final name = f.uri.pathSegments.last;
+    if (name == 'Roboto-Regular.ttf' || name == 'Roboto-Bold.ttf') {
+      fallback.addFont(Future.value(ByteData.sublistView(f.readAsBytesSync())));
+    }
+  }
+  await fallback.load();
   final icons = FontLoader('MaterialIcons')
     ..addFont(Future.value(ByteData.sublistView(
         File('$dir/MaterialIcons-Regular.otf').readAsBytesSync())));
@@ -243,13 +253,13 @@ void main() {
     await _shot(tester, '02_politique', const PrivacyPolicyScreen());
     await _shot(tester, '03_test_complet', const FullTestScreen());
     await _shot(tester, '04_bilan', ScoreScreen(result: full),
-        size: const Size(360, 1500));
+        size: const Size(360, 1360));
     await _shot(tester, '05_historique', const HistoryScreen(),
-        size: const Size(360, 1100), before: () async {
+        size: const Size(360, 1000), before: () async {
       await tester.tap(find.textContaining('Mb/s').first);
     });
     await _shot(tester, '06_reglages', const SettingsScreen(),
-        size: const Size(360, 2200));
+        size: const Size(360, 1300));
     await _shot(tester, '07_compte', const AccountScreen());
     await _shot(tester, '08_autorisations', const PermissionsScreen());
     await _shot(tester, '09_aide', const HelpScreen(),
