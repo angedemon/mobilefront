@@ -17,9 +17,14 @@ const String SERVER_LABEL = String.fromEnvironment('YELE_SERVER_LABEL',
 // Web » (xxx.apps.googleusercontent.com), le même que SPEEDTEST_GOOGLE_CLIENT_ID
 // côté serveur. Fourni à la compilation :
 //   --dart-define=YELE_GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
-// Vide : le bouton « Continuer avec Google » n'est pas affiché.
-const String GOOGLE_SERVER_CLIENT_ID =
-    String.fromEnvironment('YELE_GOOGLE_CLIENT_ID', defaultValue: '');
+// Valeur par défaut : le client « Yélé serveur » du projet Google Cloud. Un
+// identifiant client OAuth n'est pas un secret ; l'inscrire ici fait
+// apparaître le bouton dans toutes les compilations (Codemagic, poste local),
+// pas seulement celles de GitHub Actions.
+const String GOOGLE_SERVER_CLIENT_ID = String.fromEnvironment(
+    'YELE_GOOGLE_CLIENT_ID',
+    defaultValue:
+        '291532641153-4c36p20qmo4gfk4aljc6ub6l3ie7s0ff.apps.googleusercontent.com');
 // Délai maximal de réveil du serveur. L'offre gratuite de Render endort le
 // service après 15 min d'inactivité ; il met 60 à 90 s à répondre ensuite.
 const int SERVER_WAKE_TIMEOUT_SEC = 90;
