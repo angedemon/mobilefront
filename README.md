@@ -213,6 +213,12 @@ flutter build apk --release            # APK universel (32 et 64 bits)
 flutter build appbundle --release      # Bundle pour le Play Store
 ```
 
+**Serveur de mesure.** L'adresse et le libellé du serveur se changent à la
+compilation, sans toucher au code :
+`--dart-define=YELE_API_URL=https://…` et
+`--dart-define=YELE_SERVER_LABEL="yele_serveur — Ouagadougou"`. Voir le README
+du backend (`mobiletest`) pour héberger le serveur en Afrique.
+
 Ne pas utiliser `--split-per-abi` pour une diffusion directe : l'APK
 `arm64-v8a` seul ne s'installe pas sur les téléphones 32 bits.
 

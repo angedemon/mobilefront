@@ -50,13 +50,31 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       simOperator: fields[31] as String?,
       cellularTech: fields[32] as String?,
       streamingQualitiesJson: fields[33] as String?,
+      locationSource: fields[34] as String?,
+      simSlot: fields[35] as int?,
+      signalDbm: fields[36] as int?,
+      rsrp: fields[37] as int?,
+      rsrq: fields[38] as int?,
+      sinr: fields[39] as int?,
+      downloadMin: fields[40] as double?,
+      downloadMax: fields[41] as double?,
+      uploadMin: fields[42] as double?,
+      uploadMax: fields[43] as double?,
+      pingMin: fields[44] as double?,
+      pingMax: fields[45] as double?,
+      packetLoss: fields[46] as double?,
+      storedGlobalScore: fields[47] as double?,
+      address: fields[48] as String?,
+      dataUsedKiB: fields[49] as int?,
+      deviceId: fields[50] as String?,
+      accountId: fields[51] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(33)
+      ..writeByte(51)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -122,7 +140,43 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..writeByte(32)
       ..write(obj.cellularTech)
       ..writeByte(33)
-      ..write(obj.streamingQualitiesJson);
+      ..write(obj.streamingQualitiesJson)
+      ..writeByte(34)
+      ..write(obj.locationSource)
+      ..writeByte(35)
+      ..write(obj.simSlot)
+      ..writeByte(36)
+      ..write(obj.signalDbm)
+      ..writeByte(37)
+      ..write(obj.rsrp)
+      ..writeByte(38)
+      ..write(obj.rsrq)
+      ..writeByte(39)
+      ..write(obj.sinr)
+      ..writeByte(40)
+      ..write(obj.downloadMin)
+      ..writeByte(41)
+      ..write(obj.downloadMax)
+      ..writeByte(42)
+      ..write(obj.uploadMin)
+      ..writeByte(43)
+      ..write(obj.uploadMax)
+      ..writeByte(44)
+      ..write(obj.pingMin)
+      ..writeByte(45)
+      ..write(obj.pingMax)
+      ..writeByte(46)
+      ..write(obj.packetLoss)
+      ..writeByte(47)
+      ..write(obj.storedGlobalScore)
+      ..writeByte(48)
+      ..write(obj.address)
+      ..writeByte(49)
+      ..write(obj.dataUsedKiB)
+      ..writeByte(50)
+      ..write(obj.deviceId)
+      ..writeByte(51)
+      ..write(obj.accountId);
   }
 
   @override

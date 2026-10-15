@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/app_settings.dart';
+
 /// Palette et styles repris de la maquette interactive Yélé.
 class YeleColors {
   // Fonds & navigation (thème sombre)
@@ -19,10 +21,19 @@ class YeleColors {
   static const warn = Color(0xFFF5A623);
   static const danger = Color(0xFFE0464B);
 
-  // Écran de test (fond vert dégradé)
-  static const testTop = Color(0xFFCFE86B);
-  static const testMid = Color(0xFFA9DD3B);
-  static const testBot = Color(0xFF7FC91F);
+  // Écran de test : dégradé de fond selon le « Style de fond » choisi dans
+  // les réglages (ISS-12) — vert (par défaut), bleu ou sombre.
+  static const _styles = {
+    'vert': [Color(0xFFCFE86B), Color(0xFFA9DD3B), Color(0xFF7FC91F)],
+    'bleu': [Color(0xFF9ED8F5), Color(0xFF4FB3E8), Color(0xFF1E88C7)],
+    // Gris ardoise plutôt que noir : le texte foncé des tableaux reste lisible.
+    'sombre': [Color(0xFFB8C4D0), Color(0xFF8C9DAE), Color(0xFF5E7186)],
+  };
+  static List<Color> get _style =>
+      _styles[AppSettings.backgroundStyle] ?? _styles['vert']!;
+  static Color get testTop => _style[0];
+  static Color get testMid => _style[1];
+  static Color get testBot => _style[2];
   static const scoreRing = Color(0xFF9AD11F);
 
   // Surfaces claires
@@ -39,11 +50,11 @@ class YeleColors {
   static const g4p = Color(0xFFD2353A);
   static const g5 = Color(0xFF8A3FFC);
 
-  static const testGradient = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-    colors: [testTop, testMid, testBot],
-  );
+  static LinearGradient get testGradient => LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [testTop, testMid, testBot],
+      );
 }
 
 ThemeData buildYeleTheme() {

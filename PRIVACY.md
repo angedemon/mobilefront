@@ -1,6 +1,6 @@
 # Politique de confidentialité — Yélé
 
-*Dernière mise à jour : 15 octobre 2026*
+*Dernière mise à jour : 15 octobre 2026 (version 2)*
 
 > Ce texte est la version publique de celle affichée dans l'application
 > (`lib/constants/privacy_policy.dart`). Les deux doivent rester identiques.
@@ -20,7 +20,9 @@ comparant les opérateurs.
 - votre position GPS au moment du test
 - votre opérateur, le type de connexion et la technologie (2G à 5G)
 - votre adresse IP publique et le fournisseur d'accès qui lui correspond
-- le modèle de votre téléphone
+- le modèle de votre téléphone et un identifiant anonyme de l'appareil,
+  calculé de façon irréversible (il ne révèle ni votre identité ni votre numéro)
+- les données consommées par le test et la qualité du signal radio
 - votre avis sur la qualité ressentie, si vous le donnez
 
 ## Collecte en arrière-plan (facultative)
@@ -31,9 +33,17 @@ puissance du signal. Aucun test de débit n'est alors effectué. Cette collecte
 est désactivée par défaut, demande un accord séparé et s'arrête à tout moment
 depuis la notification ou les réglages.
 
+## Compte (facultatif)
+
+Si vous créez un compte, Yélé conserve votre adresse e-mail, le nom que vous
+choisissez et un mot de passe chiffré de façon irréversible, pour vous
+permettre de retrouver vos mesures. Vous pouvez supprimer votre compte à tout
+moment depuis « Mon compte » : vos mesures restent alors sur la carte, sans
+lien avec vous.
+
 ## Ce que Yélé ne collecte pas
 
-- votre nom, votre numéro de téléphone ou votre adresse e-mail
+- votre numéro de téléphone ; ni votre nom ni votre e-mail sans compte
 - vos contacts, messages, photos ou fichiers
 - l'IMEI ou le numéro de série de votre téléphone
 - aucune publicité ni outil de suivi publicitaire n'est intégré
@@ -55,7 +65,8 @@ votre adresse IP :
 
 - Render, qui héberge le serveur de mesure, et MongoDB Atlas, qui stocke les
   résultats
-- OpenStreetMap, qui fournit le fond de la carte de couverture
+- OpenStreetMap, qui fournit le fond de la carte de couverture et traduit la
+  position d'un test en adresse lisible pour votre historique
 - YouTube, pour le test de streaming, ainsi que les sites chargés par le test
   de navigation (Google, Wikipédia, Facebook, Bing, lefaso.net)
 
@@ -65,4 +76,5 @@ votre adresse IP :
 - retirer votre accord à tout moment depuis Réglages → Confidentialité
 - effacer l'historique enregistré sur votre téléphone depuis Réglages →
   Confidentialité
-- désactiver la localisation dans les paramètres Android
+- désactiver la localisation dans les paramètres Android : les tests sont
+  alors bloqués, car une mesure doit être localisée pour figurer sur la carte

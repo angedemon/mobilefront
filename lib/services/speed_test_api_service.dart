@@ -1,12 +1,18 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:io' show Platform, Process;
 import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'account_service.dart';
+import 'app_settings.dart';
+import 'device_identity_service.dart';
+import 'scoring.dart';
+import 'traffic_stats_service.dart';
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
@@ -84,24 +90,35 @@ class SpeedTestProgress {
 }
 
 class SpeedTransferMeasurement {
-  final double mbps;
+  final double mbps; // débit moyen (hors montée en charge)
   final int bytes;
   final Duration duration;
+
+  /// Débit instantané le plus bas et le plus haut relevés pendant la phase
+  /// (ISS-06), échantillonnés toutes les 500 ms hors montée en charge.
+  final double minMbps;
+  final double maxMbps;
 
   const SpeedTransferMeasurement({
     required this.mbps,
     required this.bytes,
     required this.duration,
+    this.minMbps = 0,
+    this.maxMbps = 0,
   });
 }
 
 class LatencyMeasurement {
-  final double ping;
+  final double ping; // moyenne
   final double jitter;
+  final double minPing; // ISS-06
+  final double maxPing;
 
   const LatencyMeasurement({
     required this.ping,
     required this.jitter,
+    this.minPing = 0,
+    this.maxPing = 0,
   });
 }
 
@@ -143,10 +160,29 @@ class _TransferRun {
   bool _warmupDone = false;
   int _lastEmitMs = 0;
 
+  /// Débits instantanés relevés à intervalle fixe, hors montée en charge
+  /// (ISS-06). Un minuteur, et non l'arrivée des octets, cadence le relevé :
+  /// une coupure du flux donne bien un échantillon à 0 au lieu de passer
+  /// inaperçue.
+  final List<double> _samples = [];
+  late final Timer _sampler;
+
   _TransferRun({required this.duration, this.onLive}) {
     _deadline = Timer(duration, () {
       if (!cancelToken.isCancelled) cancelToken.cancel('phase terminée');
     });
+    _sampler = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      final nowMs = _watch.elapsedMilliseconds;
+      if (nowMs < SPEED_WARMUP_MS || nowMs > duration.inMilliseconds) return;
+      _evict(nowMs);
+      _samples.add(_liveMbps(nowMs));
+    });
+  }
+
+  void _evict(int nowMs) {
+    while (_window.isNotEmpty && nowMs - _window.first.ms > SPEED_LIVE_WINDOW_MS) {
+      _windowBytes -= _window.removeFirst().bytes;
+    }
   }
 
   bool isExpired() => _watch.elapsed >= duration;
@@ -162,9 +198,7 @@ class _TransferRun {
 
     _window.add((ms: nowMs, bytes: delta));
     _windowBytes += delta;
-    while (_window.isNotEmpty && nowMs - _window.first.ms > SPEED_LIVE_WINDOW_MS) {
-      _windowBytes -= _window.removeFirst().bytes;
-    }
+    _evict(nowMs);
 
     if (onLive == null) return;
     // ~8 émissions/s : assez pour une jauge fluide, sans noyer l'UI.
@@ -181,13 +215,16 @@ class _TransferRun {
   /// premières secondes afficheraient un débit artificiellement bas.
   double _liveMbps(int nowMs) {
     if (_window.isEmpty) return 0;
-    final spanMs = (nowMs - _window.first.ms).clamp(200, SPEED_LIVE_WINDOW_MS);
+    final spanMs = _window.length == 1 && nowMs == _window.first.ms
+        ? 200
+        : (nowMs - _window.first.ms).clamp(200, SPEED_LIVE_WINDOW_MS);
     return _mbps(_windowBytes, Duration(milliseconds: spanMs));
   }
 
   SpeedTransferMeasurement finish() {
     _watch.stop();
     _deadline.cancel();
+    _sampler.cancel();
     final elapsed = _watch.elapsed;
 
     // Sur un transfert trop court pour sortir de la montée en charge, on garde
@@ -197,10 +234,14 @@ class _TransferRun {
         ? elapsed - const Duration(milliseconds: SPEED_WARMUP_MS)
         : elapsed;
 
+    final mean = _mbps(bytes, window);
     return SpeedTransferMeasurement(
-      mbps: _mbps(bytes, window),
+      mbps: mean,
       bytes: _totalBytes,
       duration: elapsed,
+      // Phase trop courte pour échantillonner : min = max = moyenne.
+      minMbps: _samples.isEmpty ? mean : _samples.reduce(min),
+      maxMbps: _samples.isEmpty ? mean : _samples.reduce(max),
     );
   }
 }
@@ -240,11 +281,17 @@ class SpeedTestApiService {
   Future<SpeedTestResult> runSpeedTest({
     double? latitude,
     double? longitude,
+    String? locationSource,
     String? location,
     String? networkType,
     String? operator,
     String? simOperator,
     String? cellularTech,
+    int? simSlot,
+    int? signalDbm,
+    int? rsrp,
+    int? rsrq,
+    int? sinr,
     String? deviceModel,
     String? osVersion,
     TestSelection selection = const TestSelection(),
@@ -270,6 +317,11 @@ class SpeedTestApiService {
         ),
       );
 
+      await _wakeServer(onProgress);
+
+      // IMP-01 : compteur d'octets de l'app avant les mesures.
+      final bytesBefore = await TrafficStatsService().totalBytes();
+
       final ipDetails = await getPublicIpInfo();
       ipInfo = ipDetails?.processedString;
       ipRawJson = ipDetails?.rawJson;
@@ -277,12 +329,17 @@ class SpeedTestApiService {
       // Débit : exécuté uniquement si demandé (tests indépendants).
       // Ordre : download, upload, puis latence.
       double dlMbps = 0, ulMbps = 0, pingMs = 0, jitterMs = 0;
+      // ISS-06 / IMP-07 : min/max des débits et de la latence, perte.
+      double? dlMin, dlMax, ulMin, ulMax, pingMin, pingMax, packetLoss;
       if (selection.speed) {
         onProgress?.call(const SpeedTestProgress(
           phase: SpeedTestPhase.download,
           message: 'Mesure du téléchargement',
         ));
+        // IMP-02 : durée de phase choisie dans les paramètres techniques.
+        final phase = Duration(seconds: AppSettings.testDurationSec);
         final download = await measureDownloadSpeed(
+          duration: phase,
           // Débit instantané pendant le transfert → la jauge bouge en direct.
           onLive: (mbps, progress) => onProgress?.call(SpeedTestProgress(
             phase: SpeedTestPhase.download,
@@ -292,6 +349,8 @@ class SpeedTestApiService {
           )),
         );
         dlMbps = download.mbps;
+        dlMin = download.minMbps;
+        dlMax = download.maxMbps;
         onProgress?.call(SpeedTestProgress(
           phase: SpeedTestPhase.download,
           message: 'Téléchargement mesuré',
@@ -304,6 +363,7 @@ class SpeedTestApiService {
           downloadSpeed: dlMbps,
         ));
         final upload = await measureUploadSpeed(
+          duration: phase,
           onLive: (mbps, progress) => onProgress?.call(SpeedTestProgress(
             phase: SpeedTestPhase.upload,
             message: 'Mesure du chargement',
@@ -313,6 +373,8 @@ class SpeedTestApiService {
           )),
         );
         ulMbps = upload.mbps;
+        ulMin = upload.minMbps;
+        ulMax = upload.maxMbps;
 
         // La latence se mesure en dernier, donc juste après avoir saturé le
         // lien. Les files d'attente des équipements réseau mettent un instant
@@ -341,6 +403,18 @@ class SpeedTestApiService {
         );
         pingMs = latency.ping;
         jitterMs = latency.jitter;
+        pingMin = latency.minPing;
+        pingMax = latency.maxPing;
+
+        onProgress?.call(SpeedTestProgress(
+          phase: SpeedTestPhase.ping,
+          message: 'Mesure de la perte de paquets',
+          downloadSpeed: dlMbps,
+          uploadSpeed: ulMbps,
+          ping: pingMs,
+          jitter: jitterMs,
+        ));
+        packetLoss = await measurePacketLoss();
         onProgress?.call(SpeedTestProgress(
           phase: SpeedTestPhase.ping,
           message: 'Latence mesurée',
@@ -415,22 +489,52 @@ class SpeedTestApiService {
         }
       }
 
+      final bytesAfter = await TrafficStatsService().totalBytes();
+
       final result = SpeedTestResult(
         downloadSpeed: dlMbps,
         uploadSpeed: ulMbps,
         ping: pingMs,
         jitter: jitterMs,
-        server: 'Render.com',
+        server: SERVER_LABEL,
         clientIp: _extractIp(ipInfo),
         networkType: networkType,
         operator: operator ?? _extractOperator(ipInfo),
         latitude: latitude,
         longitude: longitude,
+        locationSource: locationSource,
         location: location ?? _extractLocation(ipInfo),
         deviceModel: deviceModel,
         osVersion: osVersion,
         simOperator: simOperator,
         cellularTech: cellularTech,
+        simSlot: simSlot,
+        signalDbm: signalDbm,
+        rsrp: rsrp,
+        rsrq: rsrq,
+        sinr: sinr,
+        downloadMin: dlMin,
+        downloadMax: dlMax,
+        uploadMin: ulMin,
+        uploadMax: ulMax,
+        pingMin: pingMin,
+        pingMax: pingMax,
+        packetLoss: packetLoss,
+        // IMP-01 : octets reçus + émis pendant toutes les mesures.
+        dataUsedKiB: () {
+          final kib = TrafficStatsService.kibBetween(bytesBefore, bytesAfter);
+          return kib < 0 ? null : kib;
+        }(),
+        deviceId: await DeviceIdentityService().deviceId(),
+        // IMP-03 : mesure rattachée au compte connecté.
+        accountId: AccountService.currentId,
+        storedGlobalScore: Scoring.global(
+          downloadMbps: dlMbps,
+          uploadMbps: ulMbps,
+          pingMs: pingMs,
+          browsingScore: browsing?.score,
+          streamingScore: streaming?.score,
+        ),
         // JSON complet -> le backend en extrait city/country/coordonnées IP.
         testLog: ipRawJson ?? ipInfo,
         streamingStartupMs: streaming?.startupMs,
@@ -660,7 +764,7 @@ class SpeedTestApiService {
   }
 
   Future<LatencyMeasurement> measureLatency({
-    int samples = 5,
+    int samples = 10,
     // Moyenne/gigue provisoires + avancement, après chaque échantillon.
     void Function(double ping, double jitter, double progress)? onSample,
   }) async {
@@ -687,7 +791,59 @@ class SpeedTestApiService {
 
     logger.i(
         'Ping: ${ping.toStringAsFixed(2)} ms, jitter: ${jitter.toStringAsFixed(2)} ms');
-    return LatencyMeasurement(ping: ping, jitter: jitter);
+    return LatencyMeasurement(
+      ping: ping,
+      jitter: jitter,
+      minPing: measurements.reduce(min),
+      maxPing: measurements.reduce(max),
+    );
+  }
+
+  /// Perte de paquets en % vers le serveur de test (IMP-07), ou null si elle
+  /// n'a pas pu être mesurée.
+  ///
+  /// Méthode principale : `ping` ICMP du système (présent sur Android),
+  /// [count] paquets espacés de 200 ms — c'est une vraie perte de paquets,
+  /// comparable à celle de nPerf. Repli (iOS, ICMP bloqué) : sondes HTTP
+  /// courtes ; une sonde sans réponse sous 2 s compte comme perdue. Le repli
+  /// sous-estime la perte réelle, TCP retransmettant les paquets perdus.
+  Future<double?> measurePacketLoss({int count = 20}) async {
+    final host = Uri.parse(baseUrl).host;
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        final res = await Process.run(
+          'ping',
+          ['-c', '$count', '-i', '0.2', '-W', '1', host],
+        ).timeout(Duration(seconds: count + 10));
+        final m = RegExp(r'([\d.]+)% packet loss')
+            .firstMatch(res.stdout.toString());
+        // 100 % de perte peut signifier « ICMP filtré » plutôt que « réseau
+        // coupé » : on retombe alors sur la méthode HTTP.
+        if (m != null) {
+          final loss = double.parse(m.group(1)!);
+          if (loss < 100) return loss;
+        }
+      } catch (e) {
+        logger.w('ping ICMP indisponible: $e');
+      }
+    }
+
+    var lost = 0;
+    for (var i = 0; i < count; i++) {
+      try {
+        await _dio.get(
+          '/empty',
+          queryParameters: {'r': DateTime.now().microsecondsSinceEpoch},
+          options: Options(
+            receiveTimeout: const Duration(seconds: 2),
+            sendTimeout: const Duration(seconds: 2),
+          ),
+        );
+      } catch (_) {
+        lost++;
+      }
+    }
+    return lost * 100 / count;
   }
 
   double _avg(List<double> values) =>
@@ -701,15 +857,84 @@ class SpeedTestApiService {
           ).reduce((a, b) => a + b) /
           (values.length - 1);
 
+  /// Attend que le serveur réponde avant toute mesure.
+  ///
+  /// Un serveur endormi (offre gratuite de Render) renvoie des 502 pendant
+  /// une minute environ. Sans cette attente, le premier test après une pause
+  /// échouait, ou mesurait le réveil du serveur au lieu du réseau.
+  Future<void> _wakeServer(SpeedTestProgressCallback? onProgress) async {
+    final deadline =
+        DateTime.now().add(const Duration(seconds: SERVER_WAKE_TIMEOUT_SEC));
+    final slow = Timer(const Duration(seconds: 3), () {
+      onProgress?.call(const SpeedTestProgress(
+        phase: SpeedTestPhase.initializing,
+        message: "Réveil du serveur de test (jusqu'à une minute)…",
+      ));
+    });
+    try {
+      while (true) {
+        try {
+          await _dio.get(
+            '/empty',
+            options: Options(receiveTimeout: const Duration(seconds: 20)),
+          );
+          return;
+        } catch (e) {
+          if (DateTime.now().isAfter(deadline)) {
+            logger.w('Serveur toujours injoignable après réveil: $e');
+            return; // le test échouera de lui-même avec un message clair
+          }
+          await Future.delayed(const Duration(seconds: 5));
+        }
+      }
+    } finally {
+      slow.cancel();
+    }
+  }
+
+  /// Renvoie au serveur les résultats enregistrés mais jamais envoyés
+  /// (hors ligne, serveur en veille, application fermée trop tôt) — ISS-08.
+  /// Retourne le nombre de résultats envoyés.
+  Future<int> uploadPending(List<SpeedTestResult> results) async {
+    var sent = 0;
+    for (final r in results.where((r) => !r.isUploaded)) {
+      if (await uploadTestResult(r)) {
+        r.isUploaded = true;
+        try {
+          await r.save();
+        } catch (_) {
+          // Résultat hors de la boîte Hive : rien à mettre à jour.
+        }
+        sent++;
+      }
+    }
+    return sent;
+  }
+
+  /// Position du résultat parmi les autres tests (IMP-09), ou null.
+  Future<Map<String, dynamic>?> fetchBarometer(SpeedTestResult r) async {
+    try {
+      final res = await _dio.get('/api/dashboard/barometer', queryParameters: {
+        'download': r.downloadSpeed,
+        'upload': r.uploadSpeed,
+        'ping': r.ping,
+        if ((r.operator ?? '').isNotEmpty) 'operator': r.operator,
+      });
+      return Map<String, dynamic>.from(res.data as Map);
+    } catch (e) {
+      logger.w('Baromètre indisponible: $e');
+      return null;
+    }
+  }
+
   // Obtenir la liste des serveurs disponibles.
   Future<List<Map<String, dynamic>>?> getServers() async {
-    logger.i('Serveur unique: Render.com');
     return [
       {
-        'name': 'Render.com Default',
+        'name': SERVER_LABEL,
         'url': baseUrl,
-        'location': 'Render',
-        'sponsor': 'Render Platform',
+        'location': SERVER_LABEL,
+        'sponsor': 'Yélé',
       }
     ];
   }
@@ -737,11 +962,36 @@ class SpeedTestApiService {
             'networkType': result.networkType ?? '',
             'simOperator': result.simOperator ?? '',
             'cellularTech': result.cellularTech ?? '',
+            // Radio (ISS-01) et SIM de données (ISS-02) : 0 = non mesuré.
+            'simSlot': result.simSlot ?? 0,
+            'signalDbm': result.signalDbm ?? 0,
+            'rsrp': result.rsrp ?? 0,
+            'rsrq': result.rsrq ?? 0,
+            'sinr': result.sinr ?? 0,
+            // Min / max (ISS-06) et perte de paquets en % (IMP-07).
+            // -1 = non mesuré (la perte peut valoir 0 légitimement).
+            'downloadMin': result.downloadMin ?? 0,
+            'downloadMax': result.downloadMax ?? 0,
+            'uploadMin': result.uploadMin ?? 0,
+            'uploadMax': result.uploadMax ?? 0,
+            'pingMin': result.pingMin ?? 0,
+            'pingMax': result.pingMax ?? 0,
+            'packetLoss': result.packetLoss ?? -1,
+            // Score global 0-100 (IMP-12), même formule que le tableau de bord.
+            'globalScore': result.globalScore,
+            // IMP-01 / IMP-13 : données consommées (Kio, -1 = non mesuré) et
+            // identifiant d'appareil anonyme.
+            'dataUsedKiB': result.dataUsedKiB ?? -1,
+            'deviceId': result.deviceId ?? '',
+            // ISS-08 : même identifiant à chaque envoi du même test, pour
+            // que le serveur mette à jour au lieu de dupliquer.
+            'testId': result.id,
             'deviceModel': result.deviceModel ?? '',
             // location n'est plus transmis : le serveur le compose depuis
             // city/country extraits du JSON ispinfo (source unique).
             'latitude': result.latitude ?? 0.0,
             'longitude': result.longitude ?? 0.0,
+            'locationSource': result.locationSource ?? '',
             'qoeRating': result.qoeRating ?? 0,
             'qoeSatisfaction': result.qoeSatisfaction ?? '',
             // Streaming / navigation web : 0 = test non effectué
@@ -759,7 +1009,11 @@ class SpeedTestApiService {
             'browsingScore': result.browsingScore ?? 0.0,
           }),
         },
-        options: Options(contentType: Headers.formUrlEncodedContentType),
+        // IMP-03 : le jeton rattache la mesure au compte côté serveur.
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: AccountService.authHeaders,
+        ),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

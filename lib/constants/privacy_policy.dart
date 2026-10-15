@@ -7,7 +7,7 @@
 const String PRIVACY_CONTACT_EMAIL = '';
 
 /// Date de dernière mise à jour affichée en tête de la politique.
-const String PRIVACY_POLICY_DATE = '15 octobre 2026';
+const String PRIVACY_POLICY_DATE = '15 octobre 2026 (v2)';
 
 class PolicySection {
   final String title;
@@ -24,7 +24,10 @@ const List<String> CONSENT_SUMMARY = [
   'votre position GPS au moment du test',
   'votre opérateur, le type de connexion et la technologie (2G à 5G)',
   'votre adresse IP publique et le fournisseur d\'accès qui lui correspond',
-  'le modèle de votre téléphone',
+  'le modèle de votre téléphone et un identifiant anonyme de l’appareil, '
+      'calculé de façon irréversible (il ne révèle ni votre identité ni '
+      'votre numéro)',
+  'les données consommées par le test et la qualité du signal radio',
   'votre avis sur la qualité ressentie, si vous le donnez',
 ];
 
@@ -57,9 +60,19 @@ const List<PolicySection> PRIVACY_POLICY = [
     ],
   ),
   PolicySection(
+    'Compte (facultatif)',
+    paragraphs: [
+      'Si vous créez un compte, Yélé conserve votre adresse e-mail, le nom '
+          'que vous choisissez et un mot de passe chiffré de façon '
+          'irréversible, pour vous permettre de retrouver vos mesures. Vous '
+          'pouvez supprimer votre compte à tout moment depuis « Mon compte » : '
+          'vos mesures restent alors sur la carte, sans lien avec vous.',
+    ],
+  ),
+  PolicySection(
     'Ce que Yélé ne collecte pas',
     bullets: [
-      'votre nom, votre numéro de téléphone ou votre adresse e-mail',
+      'votre numéro de téléphone ; ni votre nom ni votre e-mail sans compte',
       'vos contacts, messages, photos ou fichiers',
       'l\'IMEI ou le numéro de série de votre téléphone',
       'aucune publicité ni outil de suivi publicitaire n\'est intégré',
@@ -87,7 +100,9 @@ const List<PolicySection> PRIVACY_POLICY = [
     bullets: [
       'Render, qui héberge le serveur de mesure, et MongoDB Atlas, qui '
           'stocke les résultats',
-      'OpenStreetMap, qui fournit le fond de la carte de couverture',
+      'OpenStreetMap, qui fournit le fond de la carte de couverture et '
+          'traduit la position d’un test en adresse lisible pour votre '
+          'historique',
       'YouTube, pour le test de streaming, ainsi que les sites chargés par '
           'le test de navigation (Google, Wikipédia, Facebook, Bing, '
           'lefaso.net)',
@@ -100,7 +115,9 @@ const List<PolicySection> PRIVACY_POLICY = [
       'retirer votre accord à tout moment depuis Réglages → Confidentialité',
       'effacer l\'historique enregistré sur votre téléphone depuis '
           'Réglages → Confidentialité',
-      'désactiver la localisation dans les paramètres Android',
+      'désactiver la localisation dans les paramètres Android : les tests '
+          'sont alors bloqués, car une mesure doit être localisée pour '
+          'figurer sur la carte',
     ],
   ),
 ];

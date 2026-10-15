@@ -1,0 +1,36 @@
+# Vérifie à chaque push que l'app compile : analyse statique, tests, puis
+# APK universel (32 et 64 bits). L'APK est joint au résultat de l'exécution.
+name: Flutter CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - name: Analyse
+        run: flutter analyze --no-fatal-infos
+      - name: Tests
+        run: flutter test
+      - name: APK universel
+        run: flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yele-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14

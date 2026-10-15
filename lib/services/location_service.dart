@@ -3,6 +3,9 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import '../constants/config.dart';
 
+/// Disponibilité de la localisation pour un test (ISS-09).
+enum GpsAvailability { ok, serviceOff, denied, deniedForever }
+
 /// Service de localisation — GPS réel avec fallback IP
 class LocationService {
   final logger = Logger();
@@ -17,6 +20,77 @@ class LocationService {
       ),
     );
   }
+
+  /// Vérifie, et demande si besoin, l'accès au GPS avant un test.
+  ///
+  /// ISS-09 : une mesure sans position GPS ne peut pas être placée sur la
+  /// carte de couverture ; les tests sont donc bloqués tant que ce n'est pas
+  /// [GpsAvailability.ok].
+  Future<GpsAvailability> ensureGps() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return GpsAvailability.serviceOff;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever) {
+        return GpsAvailability.deniedForever;
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.unableToDetermine) {
+        return GpsAvailability.denied;
+      }
+      return GpsAvailability.ok;
+    } catch (e) {
+      logger.e('Vérification GPS impossible: $e');
+      return GpsAvailability.serviceOff;
+    }
+  }
+
+  /// Adresse lisible des coordonnées (ISS-10) : « Avenue Kwame Nkrumah,
+  /// Koulouba, Ouagadougou », ou null si indisponible.
+  ///
+  /// Géocodage inverse OpenStreetMap (Nominatim), une seule requête par
+  /// test, en fin de mesure : leur règlement limite à une requête par
+  /// seconde et exige un User-Agent identifiant l'application.
+  Future<String?> reverseGeocode(double lat, double lng) async {
+    try {
+      final res = await Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+        headers: {'User-Agent': 'Yele/1.0 (mesure de la qualite reseau)'},
+      )).get(
+        'https://nominatim.openstreetmap.org/reverse',
+        queryParameters: {
+          'format': 'jsonv2',
+          'lat': lat,
+          'lon': lng,
+          'zoom': 17,
+          'accept-language': 'fr',
+        },
+      );
+      final a = (res.data as Map?)?['address'] as Map?;
+      if (a == null) return null;
+      final street = a['road'] ?? a['pedestrian'] ?? a['neighbourhood'];
+      final area = a['suburb'] ?? a['quarter'] ?? a['village'];
+      final city = a['city'] ?? a['town'] ?? a['municipality'] ?? a['county'];
+      final parts = [street, area, city]
+          .whereType<String>()
+          .where((e) => e.isNotEmpty)
+          .toSet()
+          .toList();
+      return parts.isEmpty ? null : parts.join(', ');
+    } catch (e) {
+      logger.w('Géocodage inverse indisponible: $e');
+      return null;
+    }
+  }
+
+  Future<bool> openLocationSettings() => Geolocator.openLocationSettings();
+
+  Future<bool> openAppSettings() => Geolocator.openAppSettings();
 
   /// Demande la permission GPS et retourne la position réelle.
   /// Retourne null si l'utilisateur refuse ou si le GPS est indisponible.

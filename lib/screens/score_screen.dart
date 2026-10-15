@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../services/scoring.dart';
+import '../services/app_settings.dart';
+import '../constants/config.dart';
 import '../models/speed_test_result.dart';
+import '../services/network_info_service.dart';
+import '../services/device_tools_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../theme/yele_theme.dart';
@@ -31,14 +36,51 @@ class _ScoreScreenState extends State<ScoreScreen> {
 
   bool get _speedDone => r.downloadSpeed > 0 || r.uploadSpeed > 0;
 
-  Future<void> _finalize() async {
-    if (_saved) return;
+  Map<String, dynamic>? _barometer;
+
+  @override
+  void initState() {
+    super.initState();
+    // ISS-08 : enregistrement et envoi dès l'affichage du bilan, sans
+    // attendre l'avis QoE ni la sortie de l'écran (quitter par le menu
+    // latéral ne déclenche pas de retour arrière : la mesure était perdue).
+    _finalize();
+    _loadBarometer();
+  }
+
+  Future<void> _loadBarometer() async {
+    if (!_speedDone) return;
+    final b = await _api.fetchBarometer(r);
+    if (mounted && b != null) setState(() => _barometer = b);
+  }
+
+  Future<void> _finalize({bool resend = false}) async {
+    if (_saved && !resend) return;
     _saved = true;
     try {
       await _storage.saveResult(r);
+      // Un renvoi (après l'avis QoE) porte le même testId : le serveur met
+      // à jour la mesure au lieu d'en créer une seconde.
       r.isUploaded = await _api.uploadTestResult(r);
+      await _storage.saveResult(r);
+      // IMP-08 : alerte si ce test fait franchir le seuil mensuel.
+      final alert = await DeviceToolsService().checkMonthlyLimit();
+      if (alert != null && mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Seuil de consommation dépassé'),
+            content: Text(alert),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK')),
+            ],
+          ),
+        );
+      }
     } catch (_) {
-      // Échec d'enregistrement non bloquant pour l'affichage.
+      // Échec d'enregistrement non bloquant : renvoyé au prochain démarrage.
     }
   }
 
@@ -54,7 +96,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
         },
       ),
     );
-    await _finalize();
+    await _finalize(resend: true);
     if (!mounted) return;
     setState(() => _qoeDone = true);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -62,14 +104,17 @@ class _ScoreScreenState extends State<ScoreScreen> {
     );
   }
 
-  // ── Qualité dérivée du débit descendant (seuils documentés) ──
+  // ── Qualité = score global 0-100 et son libellé (IMP-05 / IMP-12) ──
   ({String label, Color color}) get _quality {
-    final d = r.downloadSpeed;
-    if (d >= 50) return (label: 'Excellent', color: YeleColors.good);
-    if (d >= 20) return (label: 'Très bon', color: YeleColors.testBot);
-    if (d >= 10) return (label: 'Bon', color: YeleColors.warn);
-    if (d >= 4) return (label: 'Moyen', color: YeleColors.g4);
-    return (label: 'Faible', color: YeleColors.danger);
+    final band = scoreBand(r.globalScore);
+    const colors = [
+      YeleColors.danger,
+      YeleColors.g4,
+      YeleColors.warn,
+      YeleColors.good,
+      YeleColors.primary,
+    ];
+    return (label: band.label, color: colors[band.level]);
   }
 
   @override
@@ -80,7 +125,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
         title: 'Résultat du test',
         route: '/full',
         body: Container(
-          decoration: const BoxDecoration(gradient: YeleColors.testGradient),
+          decoration: BoxDecoration(gradient: YeleColors.testGradient),
           child: SafeArea(
             top: false,
             child: SingleChildScrollView(
@@ -89,7 +134,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   const SizedBox(height: 12),
                   _serverBar(),
                   // N'affiche que les sections du/des test(s) réellement faits.
-                  if (_speedDone) ...[_metrics(), _qualityBand()],
+                  if (_speedDone) ...[
+                    _metrics(),
+                    _qualityBand(),
+                    if (_barometer != null) _barometerCard(),
+                  ],
                   // Affiché aussi en cas d'échec, pour en montrer la raison.
                   if (r.hasStreamingTest || r.streamingError != null)
                     _streamingCard(),
@@ -107,7 +156,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
   }
 
   Widget _serverBar() {
-    final loc = (r.location?.isNotEmpty == true) ? r.location! : 'Ouagadougou';
+    // Serveur réellement utilisé pour ce test (et non la ville de
+    // l'utilisateur, affichée ici à tort auparavant).
+    final server = r.server.isNotEmpty && r.server != 'Render.com'
+        ? r.server
+        : SERVER_LABEL;
     return Container(
       color: YeleColors.panel,
       padding: const EdgeInsets.all(14),
@@ -116,7 +169,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
           Container(width: 26, height: 20, color: const Color(0xFF16557E)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('[BF] yele_serveur — $loc',
+            child: Text(server,
                 style: const TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
         ],
@@ -147,6 +200,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   style: const TextStyle(fontSize: 13, color: YeleColors.field)),
               const SizedBox(height: 3),
               Text(sub,
+                  textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 11, color: YeleColors.muted)),
             ],
           ),
@@ -158,10 +212,123 @@ class _ScoreScreenState extends State<ScoreScreen> {
       color: YeleColors.panel,
       child: Row(
         children: [
-          m('▼ Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-          m('▲ Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-          m('↔ Latence', r.ping.toStringAsFixed(0), 'ms',
-              'Gigue : ${r.jitter.toStringAsFixed(0)} ms'),
+          // Valeur affichée = moyenne ; min et max en dessous (ISS-06).
+          m('▼ Download', AppSettings.speedValue(r.downloadSpeed),
+              AppSettings.speedUnitLabel,
+              _range(r.downloadMin, r.downloadMax, speed: true)),
+          m('▲ Upload', AppSettings.speedValue(r.uploadSpeed),
+              AppSettings.speedUnitLabel,
+              _range(r.uploadMin, r.uploadMax, speed: true)),
+          m(
+              '↔ Latence',
+              r.ping.toStringAsFixed(0),
+              'ms',
+              [
+                _range(r.pingMin, r.pingMax),
+                'Gigue ${r.jitter.toStringAsFixed(0)} ms',
+                if (r.packetLoss != null)
+                  'Perte ${r.packetLoss!.toStringAsFixed(1)} %',
+              ].where((e) => e.isNotEmpty).join('\n')),
+        ],
+      ),
+    );
+  }
+
+  /// « Min 3.2 · Max 15.8 », vide si non mesuré (anciens résultats).
+  String _range(double? lo, double? hi, {bool speed = false}) {
+    if (lo == null || hi == null || hi <= 0) return '';
+    String f(double v) =>
+        speed ? AppSettings.speedValue(v, decimals: 1) : v.toStringAsFixed(0);
+    return 'Min ${f(lo)} · Max ${f(hi)}';
+  }
+
+  /// IMP-09 : « Votre débit est meilleur que 72 % des tests ».
+  Widget _barometerCard() {
+    final b = _barometer!;
+    final n = (b['sampleSize'] as num?)?.toInt() ?? 0;
+    if (n < 10) return const SizedBox.shrink(); // repère peu fiable
+    double v(String k) => (b[k] as num?)?.toDouble() ?? 0;
+    final ops = Map<String, dynamic>.from(b['operatorsAvgDownload'] as Map? ?? {});
+    final sortedOps = ops.entries.toList()
+      ..sort((a, c) => (c.value as num).compareTo(a.value as num));
+
+    Widget bar(String label, double rank) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              SizedBox(
+                  width: 92,
+                  child: Text(label,
+                      style: const TextStyle(fontSize: 12, color: YeleColors.ink))),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: rank / 100,
+                    minHeight: 10,
+                    backgroundColor: YeleColors.line,
+                    color: YeleColors.primary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                  width: 44,
+                  child: Text('${rank.toStringAsFixed(0)} %',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700))),
+            ],
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Baromètre',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text('Meilleur que … des $n tests des 90 derniers jours',
+              style: const TextStyle(fontSize: 12, color: YeleColors.muted)),
+          const SizedBox(height: 8),
+          bar('Download', v('downloadRank')),
+          bar('Upload', v('uploadRank')),
+          bar('Latence', v('pingRank')),
+          if ((b['operatorSampleSize'] as num? ?? 0) >= 10)
+            bar('Chez ${r.operator}', v('operatorDownloadRank')),
+          if (sortedOps.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('Débit moyen par opérateur',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            for (final e in sortedOps.take(5))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(
+                        child: Text(e.key,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: e.key == r.operator
+                                    ? FontWeight.w800
+                                    : FontWeight.w400))),
+                    Text(AppSettings.formatSpeed((e.value as num).toDouble(),
+                        decimals: 1),
+                        style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -202,8 +369,13 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   style: TextStyle(
                       color: q.color, fontSize: 26, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
-              Text('${r.downloadSpeed.toStringAsFixed(1)} Mb/s',
+              Text('Score ${r.globalScore.toStringAsFixed(0)}/100',
                   style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              // IMP-01 : données consommées par ce test.
+              if (r.dataUsedLabel != null)
+                Text('Données : ${r.dataUsedLabel}',
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 11)),
             ],
           ),
         ),
@@ -389,27 +561,39 @@ class _ScoreScreenState extends State<ScoreScreen> {
         color: YeleColors.panel,
         border: Border(top: BorderSide(color: YeleColors.primary, width: 2)),
       ),
-      child: Row(
+      child: Column(
         children: [
-          c('Connexion', r.networkType ?? '—'),
-          c('FAI', r.operator ?? '—'),
-          c('Réseau mobile', _mobileLabel),
+          Row(
+            children: [
+              c('Connexion', r.networkType ?? '—'),
+              c('FAI', r.operator ?? '—'),
+              c('Réseau mobile', _mobileLabel),
+            ],
+          ),
+          // ISS-01 : qualité radio de la cellule de service, si mesurée.
+          if (_radioLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(_radioLabel!,
+                  style: const TextStyle(
+                      color: YeleColors.field,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+            ),
         ],
       ),
     );
   }
 
-  /// « 4G · Orange », « 4G », ou « — » selon les mesures disponibles.
+  String? get _radioLabel => formatRadio(
+      rsrp: r.rsrp, rsrq: r.rsrq, sinr: r.sinr, signalDbm: r.signalDbm);
+
+  /// Réseau mobile du test, ou « Non utilisé (Wi-Fi) » (ISS-03).
   String get _mobileLabel {
-    final tech = r.cellularTech;
-    final sim = r.simOperator;
-    if ((tech == null || tech.isEmpty) && (sim == null || sim.isEmpty)) {
-      return '—';
+    if (!r.usedMobile) {
+      return r.networkType == 'WiFi' ? 'Non utilisé (Wi-Fi)' : '—';
     }
-    if (sim != null && sim.isNotEmpty && tech != null && tech.isNotEmpty) {
-      return '$tech · $sim';
-    }
-    return (tech != null && tech.isNotEmpty) ? tech : sim!;
+    return formatMobile(r.cellularTech, r.simOperator, simSlot: r.simSlot);
   }
 
   Widget _actions() {

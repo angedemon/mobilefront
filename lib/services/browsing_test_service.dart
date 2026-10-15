@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'scoring.dart';
 import '../constants/config.dart';
 
 /// Résultat du test de navigation web.
@@ -67,18 +68,16 @@ class BrowsingTestService {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
-            if (pageCompleter != null && !pageCompleter!.isCompleted) {
-              pageCompleter!.complete();
-            }
+            final c = pageCompleter;
+            if (c != null && !c.isCompleted) c.complete();
           },
           onWebResourceError: (error) {
             // On n'échoue que sur l'erreur du document principal, pas sur une
             // sous-ressource secondaire (pub, tracker bloqué, etc.).
-            if (error.isForMainFrame == true &&
-                pageCompleter != null &&
-                !pageCompleter!.isCompleted) {
+            final c = pageCompleter;
+            if (error.isForMainFrame == true && c != null && !c.isCompleted) {
               currentPageFailed = true;
-              pageCompleter!.complete();
+              c.complete();
             }
           },
         ),
@@ -91,14 +90,15 @@ class BrowsingTestService {
         final url = pages[i];
         onProgress?.call(i / pages.length, 'Chargement de ${_hostOf(url)}');
 
-        pageCompleter = Completer<void>();
+        final completer = Completer<void>();
+        pageCompleter = completer;
         currentPageFailed = false;
         final stopwatch = Stopwatch()..start();
 
         await controller.loadRequest(Uri.parse(url));
 
         try {
-          await pageCompleter!.future
+          await completer.future
               .timeout(const Duration(milliseconds: _hardTimeoutMs));
         } on TimeoutException {
           currentPageFailed = true;
@@ -132,17 +132,12 @@ class BrowsingTestService {
       avgLoadMs: double.parse(avgLoadMs.toStringAsFixed(0)),
       successRate: double.parse(successRate.toStringAsFixed(2)),
       pagesTested: pages.length,
-      score: double.parse(_computeScore(successRate, avgLoadMs).toStringAsFixed(1)),
+      // IMP-06 : note par page selon les seuils ARCEP (5 s / 10 s).
+      score: double.parse(Scoring.browsing(loadTimes, pages.length - loadTimes.length)
+          .toStringAsFixed(1)),
     );
     logger.i(result.toString());
     return result;
-  }
-
-  double _computeScore(double successRate, double avgLoadMs) {
-    double score = 100 * successRate;
-    // Pénalité de lenteur : -1 point par 100 ms au-delà de 2 s
-    if (avgLoadMs > 2000) score -= (avgLoadMs - 2000) / 100;
-    return score.clamp(0, 100);
   }
 
   String _hostOf(String url) => Uri.tryParse(url)?.host ?? url;

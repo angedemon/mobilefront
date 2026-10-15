@@ -8,6 +8,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import 'app_settings.dart';
+import 'scoring.dart';
 import '../constants/config.dart';
 import 'traffic_stats_service.dart';
 
@@ -238,14 +240,31 @@ class StreamingTestService {
   /// Renseigné si le lecteur signale une erreur, pour l'expliquer à l'écran.
   String? _playerError;
 
+  /// Code d'erreur YouTube correspondant, pour décider d'un changement de vidéo.
+  int? _playerErrorCode;
+
+  /// Erreurs propres à la vidéo (identifiant invalide, vidéo retirée,
+  /// intégration interdite) : une autre vidéo a toutes les chances de passer.
+  /// L'erreur 5 (lecteur HTML5 incompatible) tient à l'appareil, pas à la vidéo.
+  static const _videoErrorCodes = {2, 100, 101, 150, 152, 153};
+
+  static const _videoIds = [
+    STREAMING_YOUTUBE_VIDEO_ID,
+    ...STREAMING_YOUTUBE_FALLBACK_IDS,
+  ];
+  int _videoIndex = 0;
+
   Future<StreamingTestResult> runTest({
     StreamingControllerCallback? onController,
     StreamingProgressCallback? onProgress,
     StreamingRowsCallback? onRows,
   }) async {
-    final keys = STREAMING_QUALITY_LEVELS.keys.toList();
+    // IMP-02 : la 4K peut être désactivée pour économiser le forfait.
+    final levels = Map.of(STREAMING_QUALITY_LEVELS)
+      ..removeWhere((k, _) => k == 'hd2160' && !AppSettings.streaming4k);
+    final keys = levels.keys.toList();
     final rows = <StreamingQualityResult>[
-      for (final label in STREAMING_QUALITY_LEVELS.values)
+      for (final label in levels.values)
         StreamingQualityResult.unavailable(label),
     ];
     // Qualités effectivement servies, dans l'ordre : sert à expliquer à
@@ -277,7 +296,22 @@ class StreamingTestService {
 
       for (int i = 0; i < keys.length; i++) {
         final key = keys[i];
-        final label = STREAMING_QUALITY_LEVELS[key]!;
+
+        // Vidéo injouable (retirée, intégration interdite) : on passe à la
+        // vidéo de secours suivante et on reprend la même qualité.
+        if (_playerErrorCode != null &&
+            _videoErrorCodes.contains(_playerErrorCode) &&
+            _videoIndex + 1 < _videoIds.length) {
+          _videoIndex++;
+          logger.w('Streaming: vidéo injouable (code $_playerErrorCode), '
+              'essai de ${_videoIds[_videoIndex]}');
+          _playerError = null;
+          _playerErrorCode = null;
+          _available.clear();
+        }
+        if (_playerError != null) break;
+
+        final label = levels[key]!;
 
         // Après le premier palier on connaît les qualités de la vidéo : inutile
         // de perdre 10 s sur une qualité que la source n'a pas.
@@ -294,7 +328,16 @@ class StreamingTestService {
           onProgress: (frac, msg) =>
               onProgress?.call((i + frac) / keys.length, msg),
         );
-        if (!m.played) continue;
+        if (!m.played) {
+          // Rejoue cette qualité avec la vidéo suivante si l'échec venait de
+          // la vidéo elle-même.
+          if (_playerErrorCode != null &&
+              _videoErrorCodes.contains(_playerErrorCode) &&
+              _videoIndex + 1 < _videoIds.length) {
+            i--;
+          }
+          continue;
+        }
 
         // La qualité demandée n'est qu'une suggestion : `setPlaybackQuality`
         // est ignoré par le lecteur depuis 2019. On range donc la mesure dans
@@ -305,7 +348,7 @@ class StreamingTestService {
         if (column < 0) continue; // qualité hors tableau (360p, 1440p…)
 
         rows[column] = StreamingQualityResult(
-          label: STREAMING_QUALITY_LEVELS[m.servedKey]!,
+          label: levels[m.servedKey]!,
           reached: true,
           performanceRate: m.performanceRate,
           initialLoadingSec: m.initialLoadingSec,
@@ -350,7 +393,8 @@ class StreamingTestService {
     // Lecteur NEUF pour cette qualité : pas d'estimation de bande passante
     // héritée du palier précédent.
     _levelReady = Completer<void>();
-    await controller.runJavaScript('buildLevel("$key", $width, $height)');
+    await controller.runJavaScript(
+        'buildLevel("$key", $width, $height, "${_videoIds[_videoIndex]}")');
     try {
       await _levelReady!.future
           .timeout(const Duration(seconds: STREAMING_LEVEL_TIMEOUT_SEC));
@@ -376,6 +420,12 @@ class StreamingTestService {
           .timeout(const Duration(seconds: STREAMING_LEVEL_TIMEOUT_SEC));
     } on TimeoutException {
       logger.w('Streaming: $label n\'a jamais démarré');
+      await _stopLevel(controller);
+      return _LevelMeasurement.notPlayed;
+    }
+    // Le lecteur a signalé une erreur au lieu de démarrer : inutile de
+    // « mesurer » dix secondes d'écran noir.
+    if (_playerError != null) {
       await _stopLevel(controller);
       return _LevelMeasurement.notPlayed;
     }
@@ -476,8 +526,13 @@ class StreamingTestService {
     final measured = watched + buffering;
     final ratio = measured > 0 ? (buffering / measured).clamp(0.0, 1.0) : 0.0;
 
-    final score = _computeScore(
-        bestHeight.toDouble(), startupMs, ratio.toDouble(), rebuffers);
+    // IMP-06 : démarrage < 10 s (ARCEP), interruptions pénalisées.
+    final score = Scoring.streaming(
+      maxHeight: bestHeight,
+      startupMs: startupMs,
+      rebufferRatio: ratio.toDouble(),
+      rebufferCount: rebuffers,
+    );
 
     return StreamingTestResult(
       qualities: rows,
@@ -488,25 +543,6 @@ class StreamingTestService {
       score: double.parse(score.toStringAsFixed(1)),
       error: error,
     );
-  }
-
-  double _computeScore(
-      double maxHeight, int startupMs, double rebufferRatio, int rebufferCount) {
-    final double base = maxHeight >= 2160
-        ? 100
-        : maxHeight >= 1080
-            ? 90
-            : maxHeight >= 720
-                ? 75
-                : maxHeight >= 480
-                    ? 55
-                    : maxHeight > 0
-                        ? 35
-                        : 0;
-    double score = base;
-    if (startupMs > 2000) score -= (startupMs - 2000) / 500;
-    score -= 40 * rebufferRatio + 2 * rebufferCount;
-    return score.clamp(0, 100);
   }
 
   // ── WebView ────────────────────────────────────────────────────────────────
@@ -566,6 +602,7 @@ class StreamingTestService {
       case 'error':
         final code = (event['code'] as num?)?.toInt() ?? 0;
         _playerError = _errorMessage(code);
+        _playerErrorCode = code;
         logger.w('Streaming: erreur lecteur YouTube (code $code)');
         // Débloque les attentes en cours : la vidéo est injouable.
         if (_ready?.isCompleted == false) _ready!.complete();
@@ -678,7 +715,7 @@ function onYouTubeIframeAPIReady() { send({ e: 'ready' }); }
 // bande passante d'un palier à l'autre : après un palier en 4K il restait
 // haut, et inversement. Les paliers se contaminaient, d'où des résultats
 // différents d'un test à l'autre.
-function buildLevel(q, w, h) {
+function buildLevel(q, w, h, videoId) {
   if (player && player.destroy) { try { player.destroy(); } catch (e) {} }
   player = null;
   document.getElementById('stage').innerHTML = '<div id="player"></div>';
@@ -690,7 +727,7 @@ function buildLevel(q, w, h) {
   player = new YT.Player('player', {
     width: String(w),
     height: String(h),
-    videoId: '$STREAMING_YOUTUBE_VIDEO_ID',
+    videoId: videoId,
     playerVars: {
       autoplay: 0, controls: 0, disablekb: 1, fs: 0,
       modestbranding: 1, playsinline: 1, rel: 0, iv_load_policy: 3,

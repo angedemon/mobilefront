@@ -1,8 +1,21 @@
 // Configuration des constantes de l'application Yélé
 
 // ========== API CONFIGURATION ==========
-// Modifier cette URL pour pointer vers votre backend speedtest-go
-const String API_BASE_URL = 'https://mobiletest-j0c6.onrender.com';
+// Serveur de mesure, modifiable sans toucher au code :
+//   flutter build apk --dart-define=YELE_API_URL=https://mesure.exemple.bf
+//     --dart-define=YELE_SERVER_LABEL="yele_serveur — Ouagadougou"
+// Le débit et surtout la latence se mesurent JUSQU'À ce serveur : hébergé
+// hors d'Afrique, il ajoute le trajet intercontinental à chaque mesure.
+const String API_BASE_URL = String.fromEnvironment('YELE_API_URL',
+    defaultValue: 'https://mobiletest-j0c6.onrender.com');
+// Libellé affiché sous la jauge et dans le bilan. Il doit dire où se trouve
+// réellement le serveur : l'instance par défaut est chez Render, sans
+// datacenter en Afrique.
+const String SERVER_LABEL = String.fromEnvironment('YELE_SERVER_LABEL',
+    defaultValue: 'yele_serveur — Render (hors Afrique)');
+// Délai maximal de réveil du serveur. L'offre gratuite de Render endort le
+// service après 15 min d'inactivité ; il met 60 à 90 s à répondre ensuite.
+const int SERVER_WAKE_TIMEOUT_SEC = 90;
 // API MongoDB intégrée au même backend speedtest-go (/api/*)
 const String MONGO_API_BASE_URL = '$API_BASE_URL/api';
 
@@ -45,6 +58,14 @@ const int TEST_SOCKET_TIMEOUT = 60; // secondes
 // Big Buck Bunny 4K 60 fps (libre de droits) — vérifier que l'ID est toujours
 // valide avant mise en production.
 const String STREAMING_YOUTUBE_VIDEO_ID = 'aqz-KE-bpKQ';
+// Vidéos de secours, essayées dans l'ordre si la précédente est retirée ou
+// si son propriétaire interdit la lecture intégrée (erreurs 100, 101, 150…).
+// Sans elles, un seul changement côté YouTube rendait le test impossible pour
+// tous les utilisateurs. Mêmes exigences : 2160p disponible, intégration
+// autorisée. À vérifier avant chaque version.
+const List<String> STREAMING_YOUTUBE_FALLBACK_IDS = [
+  'LXb3EKWsInQ', // Costa Rica in 4K 60fps
+];
 // Qualités testées dans l'ordre : clé du lecteur YouTube → libellé affiché.
 // (Les clés sont celles de l'IFrame API : hd720, hd1080, hd1440, hd2160.)
 const Map<String, String> STREAMING_QUALITY_LEVELS = {

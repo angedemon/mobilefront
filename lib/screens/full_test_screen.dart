@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../services/app_settings.dart';
+import '../constants/config.dart';
 import '../models/test_selection.dart';
 import '../services/device_info_service.dart';
 import '../services/location_service.dart';
@@ -111,17 +113,8 @@ class _FullTestScreenState extends State<FullTestScreen>
     setState(() {
       _connection = status.connectionType;
       _fai = loc?.operator.isNotEmpty == true ? loc!.operator : '—';
-      _mobileNet = _formatMobile(status);
+      _mobileNet = status.mobileLabel;
     });
-  }
-
-  /// « 4G · Orange », « 4G », ou « — » selon ce qui est disponible.
-  String _formatMobile(NetworkStatus s) {
-    final tech = s.cellularTech;
-    final sim = s.simOperator;
-    if (tech == null && (sim == null || sim.isEmpty)) return '—';
-    if (sim != null && sim.isNotEmpty && tech != null) return '$tech · $sim';
-    return tech ?? sim ?? '—';
   }
 
   /// Fixe la cible ; le Ticker se charge d'y amener l'aiguille.
@@ -135,6 +128,14 @@ class _FullTestScreenState extends State<FullTestScreen>
 
   Future<void> _start() async {
     if (_stage == _Stage.running) return;
+
+    // ISS-09 : pas de test sans GPS. On vérifie AVANT de lancer quoi que ce
+    // soit, pour ne consommer aucune donnée sur une mesure inexploitable.
+    final gpsState = await _location.ensureGps();
+    if (gpsState != GpsAvailability.ok) {
+      if (mounted) await _showGpsRequired(gpsState);
+      return;
+    }
     setState(() {
       _stage = _Stage.running;
       _phaseLabel = 'Initialisation…';
@@ -148,7 +149,19 @@ class _FullTestScreenState extends State<FullTestScreen>
 
     try {
       final gps = await _location.requestGpsPosition();
+      if (gps == null) {
+        // GPS actif mais aucune position obtenue (intérieur, délai dépassé) :
+        // la mesure ne pourrait pas être localisée (ISS-09).
+        if (!mounted) return;
+        setState(() {
+          _stage = _Stage.idle;
+          _phaseLabel = 'Position GPS introuvable. Rapprochez-vous d\'une '
+              'fenêtre ou sortez, puis relancez le test.';
+        });
+        return;
+      }
       final ipLoc = await _location.getCurrentLocation();
+      final locationSource = gps.isMocked ? 'gps_mocked' : 'gps';
       final status = await _net.getStatus();
       final deviceModel = await _device.getDeviceModel();
       final osVersion = await _device.getOSVersion();
@@ -157,18 +170,27 @@ class _FullTestScreenState extends State<FullTestScreen>
         setState(() {
           _connection = status.connectionType;
           _fai = ipLoc?.operator.isNotEmpty == true ? ipLoc!.operator : _fai;
-          _mobileNet = _formatMobile(status);
+          _mobileNet = status.mobileLabel;
         });
       }
 
       final result = await _api.runSpeedTest(
-        latitude: gps?.latitude ?? ipLoc?.latitude,
-        longitude: gps?.longitude ?? ipLoc?.longitude,
+        latitude: gps.latitude,
+        longitude: gps.longitude,
+        locationSource: locationSource,
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,
         networkType: status.networkBadge,
         operator: ipLoc?.operator,
-        simOperator: status.simOperator,
-        cellularTech: status.cellularTech,
+        // ISS-03 : en Wi-Fi, la SIM n'a pas servi au test. Ses informations
+        // ne sont ni enregistrées ni envoyées, pour ne pas attribuer une
+        // mesure Wi-Fi à un opérateur mobile.
+        simOperator: status.usesMobile ? status.simOperator : null,
+        cellularTech: status.usesMobile ? status.cellularTech : null,
+        simSlot: status.usesMobile ? status.simSlot : null,
+        signalDbm: status.usesMobile ? status.signalDbm : null,
+        rsrp: status.usesMobile ? status.rsrp : null,
+        rsrq: status.usesMobile ? status.rsrq : null,
+        sinr: status.usesMobile ? status.sinr : null,
         deviceModel: deviceModel,
         osVersion: osVersion,
         selection: widget.selection,
@@ -185,6 +207,11 @@ class _FullTestScreenState extends State<FullTestScreen>
         // On affiche le bilan AVANT le QoE : pas d'envoi automatique ici.
         autoUpload: false,
       );
+
+      // ISS-10 : adresse lisible, calculée une fois la mesure terminée pour ne
+      // pas perturber le test.
+      result.address =
+          await _location.reverseGeocode(gps.latitude, gps.longitude);
 
       if (!mounted) return;
       setState(() {
@@ -206,6 +233,42 @@ class _FullTestScreenState extends State<FullTestScreen>
         _stage = _Stage.idle;
         _phaseLabel = 'Échec du test. Vérifiez la connexion.';
       });
+    }
+  }
+
+  /// Explique pourquoi le test est bloqué et mène au bon réglage (ISS-09).
+  Future<void> _showGpsRequired(GpsAvailability state) async {
+    final serviceOff = state == GpsAvailability.serviceOff;
+    final message = serviceOff
+        ? 'La localisation de votre téléphone est désactivée. Chaque mesure '
+            'est placée sur la carte de couverture : activez le GPS pour '
+            'lancer un test.'
+        : 'Yélé n\'a pas accès à votre position. Autorisez la localisation '
+            'pour lancer un test.';
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('GPS requis'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(serviceOff ? 'Activer le GPS' : 'Autoriser'),
+          ),
+        ],
+      ),
+    );
+    if (open != true) return;
+    if (serviceOff) {
+      await _location.openLocationSettings();
+    } else if (state == GpsAvailability.deniedForever) {
+      await _location.openAppSettings();
+    } else {
+      await _location.ensureGps();
     }
   }
 
@@ -255,7 +318,7 @@ class _FullTestScreenState extends State<FullTestScreen>
       title: widget.title,
       route: widget.route,
       body: Container(
-        decoration: const BoxDecoration(gradient: YeleColors.testGradient),
+        decoration: BoxDecoration(gradient: YeleColors.testGradient),
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
@@ -446,15 +509,19 @@ class _FullTestScreenState extends State<FullTestScreen>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(_coreValue.toStringAsFixed(_metricUnit == 'ms' ? 0 : 2),
+        // Débits affichés dans l'unité choisie dans les réglages (ISS-12).
+        Text(
+            _metricUnit == 'ms'
+                ? _coreValue.toStringAsFixed(0)
+                : AppSettings.speedValue(_coreValue),
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.w800, fontSize: 34)),
-        Text(_metricUnit,
+        Text(_metricUnit == 'ms' ? 'ms' : AppSettings.speedUnitLabel,
             style: const TextStyle(color: Colors.white70, fontSize: 13)),
         if (_phaseProgress > 0) ...[
           const SizedBox(height: 6),
           Text('${(_phaseProgress * 100).round()} %',
-              style: const TextStyle(
+              style: TextStyle(
                   color: YeleColors.testTop,
                   fontSize: 13,
                   fontWeight: FontWeight.w700)),
@@ -472,10 +539,9 @@ class _FullTestScreenState extends State<FullTestScreen>
           Container(width: 26, height: 20, color: const Color(0xFF5A6B3A)),
           const SizedBox(width: 10),
           const Expanded(
-            child: Text('[BF] yele_serveur — Ouagadougou',
+            child: Text(SERVER_LABEL,
                 style: TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
-          const Text('🇧🇫', style: TextStyle(fontSize: 18)),
         ],
       ),
     );
@@ -502,7 +568,9 @@ class _FullTestScreenState extends State<FullTestScreen>
               const SizedBox(height: 4),
               Text(
                   value > 0
-                      ? '${value.toStringAsFixed(unit == 'ms' ? 0 : 1)} $unit'
+                      ? (unit == 'ms'
+                          ? '${value.toStringAsFixed(0)} ms'
+                          : AppSettings.formatSpeed(value, decimals: 1))
                       : '—',
                   style: const TextStyle(
                       fontSize: 12,
@@ -622,7 +690,7 @@ class _GaugePainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = stroke
         ..strokeCap = StrokeCap.round
-        ..shader = const SweepGradient(
+        ..shader = SweepGradient(
           startAngle: 0,
           endAngle: math.pi * 2,
           colors: [YeleColors.accent, YeleColors.testBot],

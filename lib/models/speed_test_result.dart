@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
+import '../services/scoring.dart';
 import '../services/streaming_test_service.dart';
 
 part 'speed_test_result.g.dart';
@@ -114,6 +115,77 @@ class SpeedTestResult extends HiveObject {
   @HiveField(33)
   String? streamingQualitiesJson;
 
+  // Origine de la position : "gps", "gps_mocked" (application de faux GPS
+  // détectée) ou "ip" (GPS désactivé ou indisponible : position approximative
+  // de l'adresse IP). Le serveur écarte les mesures "gps_mocked" de la carte.
+  @HiveField(34)
+  String? locationSource;
+
+  // ── Radio (ISS-01) et SIM de données (ISS-02) ──
+  // Renseignés seulement pour un test passé par le réseau mobile (ISS-03).
+  @HiveField(35)
+  int? simSlot; // 1 ou 2 : SIM qui porte les données mobiles
+
+  @HiveField(36)
+  int? signalDbm;
+
+  @HiveField(37)
+  int? rsrp; // dBm (4G/5G)
+
+  @HiveField(38)
+  int? rsrq; // dB (4G/5G)
+
+  @HiveField(39)
+  int? sinr; // dB
+
+  // ── Min / Max (ISS-06) et perte de paquets (IMP-07) ──
+  @HiveField(40)
+  double? downloadMin; // Mb/s
+  @HiveField(41)
+  double? downloadMax;
+  @HiveField(42)
+  double? uploadMin;
+  @HiveField(43)
+  double? uploadMax;
+  @HiveField(44)
+  double? pingMin; // ms
+  @HiveField(45)
+  double? pingMax;
+  @HiveField(46)
+  double? packetLoss; // %
+
+  /// Score global 0-100 (IMP-12), calculé une fois à la fin du test.
+  @HiveField(47)
+  double? storedGlobalScore;
+
+  /// Adresse lisible du lieu de mesure (ISS-10), déduite des coordonnées GPS.
+  @HiveField(48)
+  String? address;
+
+  /// Données consommées par le test, en Kio (IMP-01). null si non mesuré.
+  @HiveField(49)
+  int? dataUsedKiB;
+
+  /// Identifiant d'appareil anonyme et stable (IMP-13).
+  @HiveField(50)
+  String? deviceId;
+
+  /// Compte connecté au moment du test (IMP-03), null si anonyme.
+  @HiveField(51)
+  String? accountId;
+
+  /// Score global 0-100 : la valeur enregistrée, ou recalculée avec la même
+  /// formule pour les résultats antérieurs à son introduction.
+  double get globalScore =>
+      storedGlobalScore ??
+      Scoring.global(
+        downloadMbps: downloadSpeed,
+        uploadMbps: uploadSpeed,
+        pingMs: ping,
+        browsingScore: browsingScore,
+        streamingScore: streamingScore,
+      );
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -148,6 +220,24 @@ class SpeedTestResult extends HiveObject {
     this.simOperator,
     this.cellularTech,
     this.streamingQualitiesJson,
+    this.locationSource,
+    this.simSlot,
+    this.signalDbm,
+    this.rsrp,
+    this.rsrq,
+    this.sinr,
+    this.downloadMin,
+    this.downloadMax,
+    this.uploadMin,
+    this.uploadMax,
+    this.pingMin,
+    this.pingMax,
+    this.packetLoss,
+    this.storedGlobalScore,
+    this.address,
+    this.dataUsedKiB,
+    this.deviceId,
+    this.accountId,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -168,11 +258,28 @@ class SpeedTestResult extends HiveObject {
       'operator': operator,
       'latitude': latitude,
       'longitude': longitude,
+      'locationSource': locationSource,
       'location': location,
       'deviceModel': deviceModel,
       'osVersion': osVersion,
       'simOperator': simOperator,
       'cellularTech': cellularTech,
+      'simSlot': simSlot,
+      'signalDbm': signalDbm,
+      'rsrp': rsrp,
+      'rsrq': rsrq,
+      'sinr': sinr,
+      'downloadMin': downloadMin,
+      'downloadMax': downloadMax,
+      'uploadMin': uploadMin,
+      'uploadMax': uploadMax,
+      'pingMin': pingMin,
+      'pingMax': pingMax,
+      'packetLoss': packetLoss,
+      'globalScore': globalScore,
+      'address': address,
+      'dataUsedKiB': dataUsedKiB,
+      'deviceId': deviceId,
       'testLog': testLog,
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
@@ -189,6 +296,23 @@ class SpeedTestResult extends HiveObject {
       'browsingScore': browsingScore,
     };
   }
+
+  /// « 12,4 Mo » / « 850 Ko » : données consommées par le test (IMP-01).
+  String? get dataUsedLabel {
+    final kib = dataUsedKiB;
+    if (kib == null || kib < 0) return null;
+    if (kib >= 1024 * 1024) {
+      return '${(kib / 1024 / 1024).toStringAsFixed(2)} Go';
+    }
+    if (kib >= 1024) return '${(kib / 1024).toStringAsFixed(1)} Mo';
+    return '$kib Ko';
+  }
+
+  /// Vrai si le test est passé par le réseau mobile (ISS-03).
+  bool get usedMobile =>
+      networkType != null &&
+      !const {'WiFi', 'Ethernet', 'Web', 'Aucune', 'Inconnu'}
+          .contains(networkType);
 
   /// Vrai si le test de streaming a été effectué
   bool get hasStreamingTest => streamingScore != null && streamingScore! > 0;
@@ -251,10 +375,16 @@ class SpeedTestResult extends HiveObject {
           ? null
           : readDouble(['longitude']),
       location: json['location']?.toString(),
+      locationSource: json['locationSource']?.toString(),
       deviceModel: json['deviceModel']?.toString(),
       osVersion: json['osVersion']?.toString(),
       simOperator: json['simOperator']?.toString(),
       cellularTech: json['cellularTech']?.toString(),
+      simSlot: readInt(['simSlot']),
+      signalDbm: readInt(['signalDbm']),
+      rsrp: readInt(['rsrp']),
+      rsrq: readInt(['rsrq']),
+      sinr: readInt(['sinr']),
       streamingQualitiesJson: json['streamingQualities'] as String?,
       imagePath: json['imagePath'] as String?,
       testLog: json['testLog'] as String?,

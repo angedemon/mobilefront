@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../services/app_settings.dart';
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
+import '../services/device_tools_service.dart';
+import 'help_screen.dart';
+import 'permissions_screen.dart';
 import '../services/consent_service.dart';
 import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
@@ -15,7 +19,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _useGps = true;
 
   final _collect = BackgroundCollectionService();
   CollectStatus _status = CollectStatus.unavailable;
@@ -24,6 +27,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    DeviceToolsService().isMonitorRunning().then((v) {
+      if (mounted) setState(() => _monitorOn = v);
+    });
     _refreshStatus();
   }
 
@@ -42,16 +48,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
         color: YeleColors.panel,
         child: ListView(
           children: [
-            _section('Général'),
-            _item('Langue', 'Auto'),
-            _item('Test par défaut au démarrage', 'Test complet'),
-            _item('Unité de débit', 'Mb/s'),
-            _item('Style de fond', 'Vert'),
-            _toggle('Utiliser le GPS',
-                'Active/désactive la géolocalisation des tests', _useGps,
-                (v) => setState(() => _useGps = v)),
+            _section(tr('Général', 'General')),
+            // ISS-12 : chaque réglage est enregistré et appliqué.
+            _choice(
+              tr('Langue', 'Language'),
+              AppSettings.language,
+              {
+                'system': tr('Langue du téléphone', 'Phone language'),
+                'fr': 'Français',
+                'en': 'English',
+              },
+              AppSettings.setLanguage,
+            ),
+            _choice(
+              tr('Test par défaut au démarrage', 'Default test at startup'),
+              AppSettings.defaultTest,
+              {
+                '/full': tr('Test complet', 'Full test'),
+                '/speed': 'Speed test',
+                '/browsing': tr('Test de navigation', 'Browsing test'),
+                '/streaming': tr('Test de streaming', 'Streaming test'),
+              },
+              AppSettings.setDefaultTest,
+            ),
+            _choice(
+              tr('Unité de débit', 'Speed unit'),
+              AppSettings.speedUnit,
+              const {'mbps': 'Mb/s', 'kbps': 'kb/s', 'MBps': 'Mo/s'},
+              AppSettings.setSpeedUnit,
+            ),
+            _choice(
+              tr('Style de fond', 'Background style'),
+              AppSettings.backgroundStyle,
+              {
+                'vert': tr('Vert', 'Green'),
+                'bleu': tr('Bleu', 'Blue'),
+                'sombre': tr('Sombre', 'Dark'),
+              },
+              AppSettings.setBackgroundStyle,
+            ),
+            // IMP-02 : paramètres techniques
+            _section(tr('Paramètres techniques', 'Technical settings')),
+            _choice(
+              tr('Durée des mesures de débit', 'Speed test duration'),
+              '${AppSettings.testDurationSec}',
+              {
+                '5': tr('5 s (économe)', '5 s (saves data)'),
+                '10': tr('10 s (recommandé)', '10 s (recommended)'),
+                '15': tr('15 s (plus précis)', '15 s (more accurate)'),
+              },
+              (v) => AppSettings.setTestDurationSec(int.parse(v)),
+            ),
+            _toggle(
+              tr('Tester la 4K en streaming', 'Test 4K streaming'),
+              tr('Environ 15 Mo de plus par test complet',
+                  'About 15 MB more per full test'),
+              AppSettings.streaming4k,
+              (v) async {
+                await AppSettings.setStreaming4k(v);
+                if (mounted) setState(() {});
+              },
+            ),
+            // IMP-08 : consommation de données
+            ..._usageSection(),
             if (_collect.isSupported) ..._collectSection(),
             ..._privacySection(),
+            // IMP-04 / IMP-02 : autorisations et assistance
+            _section(tr('Assistance', 'Help')),
+            _link(tr('Autorisations', 'Permissions'),
+                tr('État de chaque autorisation et usage',
+                    'Status and purpose of each permission'),
+                () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const PermissionsScreen()))),
+            _link(tr('Aide et FAQ', 'Help and FAQ'),
+                tr('Questions fréquentes', 'Frequently asked questions'),
+                () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HelpScreen()))),
+            _link(tr('Contactez-nous', 'Contact us'),
+                tr('Signaler un problème, poser une question',
+                    'Report a problem, ask a question'),
+                () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const HelpScreen()))),
             const SizedBox(height: 24),
           ],
         ),
@@ -308,6 +385,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // ── Consommation (IMP-08) ─────────────────────────────────────────────────
+
+  bool _monitorOn = false;
+
+  List<Widget> _usageSection() {
+    final used = DeviceToolsService.monthUsageKiB();
+    final limit = AppSettings.monthlyLimitMb;
+    return [
+      _section(tr('Consommation de données', 'Data usage')),
+      _item(
+          tr('Ce mois-ci (tests Yélé)', 'This month (Yélé tests)'),
+          DeviceToolsService.formatKiB(used) +
+              (limit > 0
+                  ? ' / ${DeviceToolsService.formatKiB(limit * 1024)}'
+                  : '')),
+      _choice(
+        tr('Seuil mensuel d\'alerte', 'Monthly alert threshold'),
+        '$limit',
+        {
+          '0': tr('Aucun', 'None'),
+          '200': '200 Mo',
+          '500': '500 Mo',
+          '1024': '1 Go',
+          '2048': '2 Go',
+          '5120': '5 Go',
+        },
+        (v) async {
+          await AppSettings.setMonthlyLimitMb(int.parse(v));
+          // Nouveau seuil : l'alerte peut se redéclencher ce mois-ci.
+          await AppSettings.setLastDataAlertMonth('');
+        },
+      ),
+      _toggle(
+        tr('Débit en temps réel', 'Live throughput'),
+        tr('Débit du téléphone dans une notification, chaque seconde',
+            'Phone throughput in a notification, every second'),
+        _monitorOn,
+        (v) async {
+          final tools = DeviceToolsService();
+          if (v) {
+            final ok = await tools.startMonitor();
+            if (!ok) _snack('Autorisez les notifications, puis réessayez.');
+          } else {
+            await tools.stopMonitor();
+          }
+          await Future.delayed(const Duration(milliseconds: 400));
+          final running = await tools.isMonitorRunning();
+          if (mounted) setState(() => _monitorOn = running);
+        },
+      ),
+    ];
+  }
+
   // ── Confidentialité ───────────────────────────────────────────────────────
 
   List<Widget> _privacySection() {
@@ -396,6 +526,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontSize: 15,
                 fontWeight: FontWeight.w700)),
       );
+
+  /// Réglage à choix unique : la valeur courante en sous-titre, une liste
+  /// de choix au toucher. Le choix est enregistré puis l'écran se redessine.
+  Widget _choice(String title, String current, Map<String, String> options,
+      Future<void> Function(String) save) {
+    return InkWell(
+      onTap: () async {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: Text(title),
+            children: [
+              for (final e in options.entries)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, e.key),
+                  child: Row(
+                    children: [
+                      Icon(
+                        e.key == current
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        size: 20,
+                        color: YeleColors.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(e.value),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+        if (picked == null || picked == current) return;
+        await save(picked);
+        if (mounted) setState(() {});
+      },
+      child: _item(title, options[current] ?? current),
+    );
+  }
 
   Widget _item(String title, String sub) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),

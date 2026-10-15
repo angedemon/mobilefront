@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'services/account_service.dart';
+import 'services/app_settings.dart';
 import 'models/test_selection.dart';
+import 'screens/account_screen.dart';
 import 'screens/consent_screen.dart';
 import 'screens/coverage_screen.dart';
 import 'screens/full_test_screen.dart';
@@ -10,6 +14,7 @@ import 'screens/settings_screen.dart';
 import 'services/background_collection_service.dart';
 import 'services/consent_service.dart';
 import 'services/local_storage_service.dart';
+import 'services/speed_test_api_service.dart';
 import 'theme/yele_theme.dart';
 
 Future<void> main() async {
@@ -24,6 +29,7 @@ Future<void> main() async {
   } catch (_) {
     // Illisible : hasConsented vaudra faux et l'accord sera redemandé.
   }
+  AccountService.reload(); // IMP-03 : compte mémorisé
   final hasConsented = ConsentService().hasConsented;
   if (!hasConsented) {
     // Une collecte activée sous une ancienne version de la politique ne doit
@@ -31,6 +37,13 @@ Future<void> main() async {
     await BackgroundCollectionService().stop();
   }
   runApp(YeleApp(hasConsented: hasConsented));
+
+  // ISS-08 : renvoie en arrière-plan les mesures jamais transmises.
+  if (hasConsented) {
+    SpeedTestApiService()
+        .uploadPending(LocalStorageService().getAllResults())
+        .ignore();
+  }
 }
 
 class YeleApp extends StatelessWidget {
@@ -39,41 +52,61 @@ class YeleApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Se reconstruit à chaque changement de réglage (langue notamment).
+    return ValueListenableBuilder<int>(
+      valueListenable: AppSettings.revision,
+      builder: (context, _, __) => _app(),
+    );
+  }
+
+  Widget _app() {
     return MaterialApp(
       title: 'Yélé',
       debugShowCheckedModeBanner: false,
       theme: buildYeleTheme(),
-      initialRoute: hasConsented ? '/full' : '/consent',
+      // ISS-12 : langue choisie dans les réglages.
+      locale: AppSettings.language == 'system'
+          ? null
+          : Locale(AppSettings.language),
+      supportedLocales: const [Locale('fr'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      // ISS-12 : test ouvert au démarrage, choisi dans les réglages.
+      initialRoute: hasConsented ? AppSettings.defaultTest : '/consent',
       routes: {
         '/consent': (_) => const ConsentScreen(),
         '/privacy': (_) => const PrivacyPolicyScreen(),
-        '/full': (_) => const FullTestScreen(
-              selection: TestSelection.all(),
-              title: 'Test complet',
+        '/full': (_) => FullTestScreen(
+              selection: const TestSelection.all(),
+              title: tr('Test complet', 'Full test'),
               route: '/full',
-              launchLabel: 'LANCER LE\nTEST COMPLET',
+              launchLabel: tr('LANCER LE\nTEST COMPLET', 'START\nFULL TEST'),
             ),
-        '/speed': (_) => const FullTestScreen(
-              selection: TestSelection(speed: true),
+        '/speed': (_) => FullTestScreen(
+              selection: const TestSelection(speed: true),
               title: 'Speed test',
               route: '/speed',
-              launchLabel: 'LANCER LE\nSPEEDTEST',
+              launchLabel: tr('LANCER LE\nSPEEDTEST', 'START\nSPEED TEST'),
             ),
-        '/browsing': (_) => const FullTestScreen(
-              selection: TestSelection(speed: false, browsing: true),
-              title: 'Test de navigation',
+        '/browsing': (_) => FullTestScreen(
+              selection: const TestSelection(speed: false, browsing: true),
+              title: tr('Test de navigation', 'Browsing test'),
               route: '/browsing',
-              launchLabel: 'LANCER LE\nTEST NAVIGATION',
+              launchLabel: tr('LANCER LE\nTEST NAVIGATION', 'START\nBROWSING TEST'),
             ),
-        '/streaming': (_) => const FullTestScreen(
-              selection: TestSelection(speed: false, streaming: true),
-              title: 'Test de streaming',
+        '/streaming': (_) => FullTestScreen(
+              selection: const TestSelection(speed: false, streaming: true),
+              title: tr('Test de streaming', 'Streaming test'),
               route: '/streaming',
-              launchLabel: 'LANCER LE\nTEST STREAMING',
+              launchLabel: tr('LANCER LE\nTEST STREAMING', 'START\nSTREAMING TEST'),
             ),
         '/history': (_) => const HistoryScreen(),
         '/coverage': (_) => const CoverageScreen(),
         '/settings': (_) => const SettingsScreen(),
+        '/account': (_) => const AccountScreen(),
       },
     );
   }

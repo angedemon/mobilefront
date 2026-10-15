@@ -3,7 +3,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../services/app_settings.dart';
 import '../models/speed_test_result.dart';
+import '../services/network_info_service.dart';
+import '../services/account_service.dart';
 import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
@@ -27,7 +30,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _all = _storage.getResultsSorted();
+    // IMP-03 : chaque compte ne voit que ses mesures ; sans compte, celles
+    // faites sans compte.
+    final account = AccountService.currentId;
+    _all = _storage
+        .getResultsSorted()
+        .where((r) => r.accountId == account)
+        .toList();
   }
 
   bool _isComplet(SpeedTestResult r) =>
@@ -208,8 +217,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         InkWell(
           onTap: () => setState(() => _expandedId = expanded ? null : r.id),
           child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFF10161F),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10161F),
               border: Border(bottom: BorderSide(color: YeleColors.testBot)),
             ),
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
@@ -283,10 +292,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 14,
                   child: Column(
                     children: [
-                      Text('${r.downloadSpeed.toStringAsFixed(2)} Mb/s',
+                      Text(AppSettings.formatSpeed(r.downloadSpeed),
                           style: const TextStyle(
                               color: Color(0xFFCFD6E0), fontSize: 11)),
-                      Text('${r.uploadSpeed.toStringAsFixed(2)} Mb/s',
+                      Text(AppSettings.formatSpeed(r.uploadSpeed),
                           style: const TextStyle(
                               color: Color(0xFF8FA0B8), fontSize: 10)),
                     ],
@@ -306,7 +315,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       Container(
                         width: 22,
                         height: 22,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: YeleColors.testBot,
                           shape: BoxShape.circle,
                         ),
@@ -351,23 +360,57 @@ class _HistoryScreenState extends State<HistoryScreen> {
       padding: const EdgeInsets.all(14),
       child: Column(
         children: [
+          line('Score global', '${r.globalScore.toStringAsFixed(0)}/100'),
           line('Serveur', r.server),
           line('FAI', r.operator ?? '—'),
-          if ((r.simOperator ?? '').isNotEmpty || (r.cellularTech ?? '').isNotEmpty)
+          // ISS-03 : informations mobiles seulement pour un test mobile.
+          if (r.usedMobile)
+            line('Réseau mobile',
+                formatMobile(r.cellularTech, r.simOperator, simSlot: r.simSlot))
+          else if (r.networkType == 'WiFi')
+            line('Réseau mobile', 'Non utilisé (Wi-Fi)'),
+          // ISS-01 : RSRP / RSRQ / SINR quand ils ont été mesurés.
+          if (formatRadio(
+                  rsrp: r.rsrp,
+                  rsrq: r.rsrq,
+                  sinr: r.sinr,
+                  signalDbm: r.signalDbm) !=
+              null)
             line(
-                'Réseau mobile',
-                [r.cellularTech, r.simOperator]
-                    .where((e) => (e ?? '').isNotEmpty)
-                    .join(' · ')),
+                'Radio',
+                formatRadio(
+                    rsrp: r.rsrp,
+                    rsrq: r.rsrq,
+                    sinr: r.sinr,
+                    signalDbm: r.signalDbm)!),
           line('Réseau', r.location ?? '—'),
-          line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
+          // ISS-06 : min / moy / max quand ils ont été mesurés.
+          if ((r.downloadMax ?? 0) > 0)
+            line('Download min / moy / max',
+                '${AppSettings.speedValue(r.downloadMin!, decimals: 1)} / ${AppSettings.speedValue(r.downloadSpeed, decimals: 1)} / ${AppSettings.formatSpeed(r.downloadMax!, decimals: 1)}'),
+          if ((r.uploadMax ?? 0) > 0)
+            line('Upload min / moy / max',
+                '${AppSettings.speedValue(r.uploadMin!, decimals: 1)} / ${AppSettings.speedValue(r.uploadSpeed, decimals: 1)} / ${AppSettings.formatSpeed(r.uploadMax!, decimals: 1)}'),
+          if ((r.pingMax ?? 0) > 0)
+            line('Latence min / moy / max',
+                '${r.pingMin!.toStringAsFixed(0)} / ${r.ping.toStringAsFixed(0)} / ${r.pingMax!.toStringAsFixed(0)} ms')
+          else
+            line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
+          // IMP-07
+          if (r.packetLoss != null)
+            line('Perte de paquets', '${r.packetLoss!.toStringAsFixed(1)} %'),
           if (r.hasStreamingTest)
             line('Streaming',
                 '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
           if (r.hasBrowsingTest)
             line('Navigation',
                 '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
+          // ISS-10 : adresse lisible en plus des coordonnées.
+          if ((r.address ?? '').isNotEmpty) line('Adresse', r.address!),
+          // IMP-01
+          if (r.dataUsedLabel != null)
+            line('Données consommées', r.dataUsedLabel!),
           if ((r.latitude ?? 0) != 0)
             line('Coord.',
                 '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}'),

@@ -19,23 +19,74 @@ class NetworkStatus {
   final String? cellularTech;
 
   /// Nom de l'opérateur SIM (Android). null/n.d. sur iOS 16+ ou sans SIM.
+  /// Toujours celui de la SIM qui porte les données mobiles (ISS-02).
   final String? simOperator;
+
+  /// Emplacement (1 ou 2) de la SIM de données, et nombre de SIM actives.
+  final int? simSlot;
+  final int simCount;
+
+  /// Mesures radio de la cellule de service (ISS-01), null si indisponibles :
+  /// puissance (dBm), RSRP et RSRQ (4G/5G), SINR (dB).
+  final int? signalDbm;
+  final int? rsrp;
+  final int? rsrq;
+  final int? sinr;
 
   const NetworkStatus({
     required this.connectionType,
     this.cellularTech,
     this.simOperator,
+    this.simSlot,
+    this.simCount = 1,
+    this.signalDbm,
+    this.rsrp,
+    this.rsrq,
+    this.sinr,
   });
 
   bool get isWifi => connectionType == 'WiFi';
+
+  /// Vrai si le test passe par le réseau mobile : seules ces mesures portent
+  /// des informations radio et d'opérateur SIM (ISS-03).
+  bool get usesMobile => connectionType == 'Mobile';
+
+  /// « 4G · Orange (SIM 2) », ou « Non utilisé (Wi-Fi) » : en Wi-Fi, le réseau
+  /// mobile n'est PAS celui du test et ne doit pas être présenté comme tel.
+  String get mobileLabel {
+    if (!usesMobile) {
+      return isWifi ? 'Non utilisé (Wi-Fi)' : '—';
+    }
+    return formatMobile(cellularTech, simOperator,
+        simSlot: simCount > 1 ? simSlot : null);
+  }
 
   /// Badge réseau affiché et stocké : 'WiFi' en WiFi, sinon la techno mobile.
   String get networkBadge =>
       isWifi ? 'WiFi' : (cellularTech ?? connectionType);
 
   @override
-  String toString() =>
-      'NetworkStatus($connectionType, tech=$cellularTech, sim=$simOperator)';
+  String toString() => 'NetworkStatus($connectionType, tech=$cellularTech, '
+      'sim=$simOperator, slot=$simSlot, rsrp=$rsrp, rsrq=$rsrq, sinr=$sinr)';
+}
+
+/// « 4G · Orange (SIM 2) », « 4G », ou « — » selon ce qui est disponible.
+String formatMobile(String? tech, String? sim, {int? simSlot}) {
+  final parts =
+      [tech, sim].where((e) => e != null && e.isNotEmpty).join(' · ');
+  if (parts.isEmpty) return '—';
+  return simSlot != null ? '$parts (SIM $simSlot)' : parts;
+}
+
+/// « RSRP -95 dBm · RSRQ -11 dB · SINR 8 dB », ou null si rien n'est mesuré.
+String? formatRadio({int? rsrp, int? rsrq, int? sinr, int? signalDbm}) {
+  final parts = <String>[
+    if (rsrp != null) 'RSRP $rsrp dBm',
+    if (rsrq != null) 'RSRQ $rsrq dB',
+    if (sinr != null) 'SINR $sinr dB',
+  ];
+  if (parts.isEmpty && signalDbm != null) parts.add('Signal $signalDbm dBm');
+  return parts.isEmpty ? null : parts.join(' · ');
 }
 
 /// Service d'information réseau : type de connexion (connectivity_plus) +
@@ -65,6 +116,8 @@ class NetworkInfoService {
 
     String? cellularTech;
     String? simOperator;
+    int? simSlot, signalDbm, rsrp, rsrq, sinr;
+    int simCount = 1;
 
     // Sur Android, on s'assure d'avoir la permission avant de lire.
     if (Platform.isAndroid) {
@@ -86,6 +139,13 @@ class NetworkInfoService {
           final mccMnc = (info['mccMnc'] as String?)?.trim();
           simOperator = _operatorFromMccMnc(mccMnc);
         }
+        int? asInt(String k) => (info[k] as num?)?.toInt();
+        simSlot = asInt('simSlot');
+        simCount = asInt('simCount') ?? 1;
+        signalDbm = asInt('signalDbm');
+        rsrp = asInt('rsrp');
+        rsrq = asInt('rsrq');
+        sinr = asInt('sinr');
       }
     } on MissingPluginException {
       // Canal natif absent (ex. tests) : on reste sur le type de connexion.
@@ -97,6 +157,12 @@ class NetworkInfoService {
       connectionType: connectionType,
       cellularTech: cellularTech,
       simOperator: simOperator,
+      simSlot: simSlot,
+      simCount: simCount,
+      signalDbm: signalDbm,
+      rsrp: rsrp,
+      rsrq: rsrq,
+      sinr: sinr,
     );
     logger.i('📶 $status');
     return status;
