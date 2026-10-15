@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
+import '../services/consent_service.dart';
+import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -49,6 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Active/désactive la géolocalisation des tests', _useGps,
                 (v) => setState(() => _useGps = v)),
             if (_collect.isSupported) ..._collectSection(),
+            ..._privacySection(),
             const SizedBox(height: 24),
           ],
         ),
@@ -305,6 +308,84 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // ── Confidentialité ───────────────────────────────────────────────────────
+
+  List<Widget> _privacySection() {
+    final acceptedAt = ConsentService().acceptedAt;
+    return [
+      _section('Confidentialité'),
+      _link('Politique de confidentialité',
+          'Données collectées, usage et services tiers',
+          () => Navigator.of(context).pushNamed('/privacy')),
+      _link('Effacer l\'historique',
+          'Supprime les résultats enregistrés sur ce téléphone',
+          _onClearHistory),
+      _link(
+          'Retirer mon consentement',
+          acceptedAt == null
+              ? 'Arrête tout envoi de données au serveur'
+              : 'Accordé le ${acceptedAt.day}/${acceptedAt.month}/${acceptedAt.year}'
+                  ' — arrête tout envoi de données au serveur',
+          _onWithdrawConsent),
+    ];
+  }
+
+  Future<void> _onClearHistory() async {
+    final ok = await _confirm(
+      'Effacer l\'historique ?',
+      'Tous les résultats enregistrés sur ce téléphone seront supprimés. '
+          'Les mesures déjà envoyées au serveur ne sont pas concernées.',
+      'Effacer',
+    );
+    if (ok != true) return;
+    var cleared = true;
+    try {
+      await LocalStorageService().clearAll();
+    } catch (_) {
+      cleared = false;
+    }
+    if (!mounted) return;
+    _snack(cleared
+        ? 'Historique effacé.'
+        : 'Impossible d\'effacer l\'historique.');
+  }
+
+  Future<void> _onWithdrawConsent() async {
+    final ok = await _confirm(
+      'Retirer votre consentement ?',
+      'Yélé n\'enverra plus aucune donnée et la collecte en arrière-plan sera '
+          'arrêtée. Vous ne pourrez plus lancer de test sans accepter à '
+          'nouveau.',
+      'Retirer',
+    );
+    if (ok != true) return;
+    await _collect.stop();
+    await ConsentService().withdraw();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/consent', (_) => false);
+  }
+
+  Future<bool?> _confirm(String title, String message, String action) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: YeleColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Éléments de liste ─────────────────────────────────────────────────────
 
   Widget _section(String t) => Padding(
@@ -330,6 +411,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Text(sub,
                 style: const TextStyle(fontSize: 13, color: YeleColors.muted)),
           ],
+        ),
+      );
+
+  Widget _link(String title, String sub, VoidCallback onTap) => InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Color(0x11000000))),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 16, color: YeleColors.ink)),
+                    const SizedBox(height: 2),
+                    Text(sub,
+                        style: const TextStyle(
+                            fontSize: 13, color: YeleColors.muted)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: YeleColors.muted),
+            ],
+          ),
         ),
       );
 
