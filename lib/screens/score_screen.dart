@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/scoring.dart';
 import '../services/app_settings.dart';
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
@@ -65,14 +66,17 @@ class _ScoreScreenState extends State<ScoreScreen> {
     );
   }
 
-  // ── Qualité dérivée du débit descendant (seuils documentés) ──
+  // ── Qualité = score global 0-100 et son libellé (IMP-05 / IMP-12) ──
   ({String label, Color color}) get _quality {
-    final d = r.downloadSpeed;
-    if (d >= 50) return (label: 'Excellent', color: YeleColors.good);
-    if (d >= 20) return (label: 'Très bon', color: YeleColors.testBot);
-    if (d >= 10) return (label: 'Bon', color: YeleColors.warn);
-    if (d >= 4) return (label: 'Moyen', color: YeleColors.g4);
-    return (label: 'Faible', color: YeleColors.danger);
+    final band = scoreBand(r.globalScore);
+    const colors = [
+      YeleColors.danger,
+      YeleColors.g4,
+      YeleColors.warn,
+      YeleColors.good,
+      YeleColors.primary,
+    ];
+    return (label: band.label, color: colors[band.level]);
   }
 
   @override
@@ -231,7 +235,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   style: TextStyle(
                       color: q.color, fontSize: 26, fontWeight: FontWeight.w800)),
               const SizedBox(height: 2),
-              Text(AppSettings.formatSpeed(r.downloadSpeed, decimals: 1),
+              Text('Score ${r.globalScore.toStringAsFixed(0)}/100',
                   style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ],
           ),

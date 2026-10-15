@@ -353,6 +353,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       padding: const EdgeInsets.all(14),
       child: Column(
         children: [
+          line('Score global', '${r.globalScore.toStringAsFixed(0)}/100'),
           line('Serveur', r.server),
           line('FAI', r.operator ?? '—'),
           // ISS-03 : informations mobiles seulement pour un test mobile.

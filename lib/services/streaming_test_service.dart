@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import 'scoring.dart';
 import '../constants/config.dart';
 import 'traffic_stats_service.dart';
 
@@ -521,8 +522,13 @@ class StreamingTestService {
     final measured = watched + buffering;
     final ratio = measured > 0 ? (buffering / measured).clamp(0.0, 1.0) : 0.0;
 
-    final score = _computeScore(
-        bestHeight.toDouble(), startupMs, ratio.toDouble(), rebuffers);
+    // IMP-06 : démarrage < 10 s (ARCEP), interruptions pénalisées.
+    final score = Scoring.streaming(
+      maxHeight: bestHeight,
+      startupMs: startupMs,
+      rebufferRatio: ratio.toDouble(),
+      rebufferCount: rebuffers,
+    );
 
     return StreamingTestResult(
       qualities: rows,
@@ -533,25 +539,6 @@ class StreamingTestService {
       score: double.parse(score.toStringAsFixed(1)),
       error: error,
     );
-  }
-
-  double _computeScore(
-      double maxHeight, int startupMs, double rebufferRatio, int rebufferCount) {
-    final double base = maxHeight >= 2160
-        ? 100
-        : maxHeight >= 1080
-            ? 90
-            : maxHeight >= 720
-                ? 75
-                : maxHeight >= 480
-                    ? 55
-                    : maxHeight > 0
-                        ? 35
-                        : 0;
-    double score = base;
-    if (startupMs > 2000) score -= (startupMs - 2000) / 500;
-    score -= 40 * rebufferRatio + 2 * rebufferCount;
-    return score.clamp(0, 100);
   }
 
   // ── WebView ────────────────────────────────────────────────────────────────

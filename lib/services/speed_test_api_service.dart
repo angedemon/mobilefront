@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:logger/logger.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'scoring.dart';
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
@@ -506,6 +507,13 @@ class SpeedTestApiService {
         pingMin: pingMin,
         pingMax: pingMax,
         packetLoss: packetLoss,
+        storedGlobalScore: Scoring.global(
+          downloadMbps: dlMbps,
+          uploadMbps: ulMbps,
+          pingMs: pingMs,
+          browsingScore: browsing?.score,
+          streamingScore: streaming?.score,
+        ),
         // JSON complet -> le backend en extrait city/country/coordonnées IP.
         testLog: ipRawJson ?? ipInfo,
         streamingStartupMs: streaming?.startupMs,
@@ -913,6 +921,8 @@ class SpeedTestApiService {
             'pingMin': result.pingMin ?? 0,
             'pingMax': result.pingMax ?? 0,
             'packetLoss': result.packetLoss ?? -1,
+            // Score global 0-100 (IMP-12), même formule que le tableau de bord.
+            'globalScore': result.globalScore,
             'deviceModel': result.deviceModel ?? '',
             // location n'est plus transmis : le serveur le compose depuis
             // city/country extraits du JSON ispinfo (source unique).

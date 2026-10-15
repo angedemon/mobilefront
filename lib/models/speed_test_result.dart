@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
+import '../services/scoring.dart';
 import '../services/streaming_test_service.dart';
 
 part 'speed_test_result.g.dart';
@@ -153,6 +154,22 @@ class SpeedTestResult extends HiveObject {
   @HiveField(46)
   double? packetLoss; // %
 
+  /// Score global 0-100 (IMP-12), calculé une fois à la fin du test.
+  @HiveField(47)
+  double? storedGlobalScore;
+
+  /// Score global 0-100 : la valeur enregistrée, ou recalculée avec la même
+  /// formule pour les résultats antérieurs à son introduction.
+  double get globalScore =>
+      storedGlobalScore ??
+      Scoring.global(
+        downloadMbps: downloadSpeed,
+        uploadMbps: uploadSpeed,
+        pingMs: ping,
+        browsingScore: browsingScore,
+        streamingScore: streamingScore,
+      );
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -200,6 +217,7 @@ class SpeedTestResult extends HiveObject {
     this.pingMin,
     this.pingMax,
     this.packetLoss,
+    this.storedGlobalScore,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -238,6 +256,7 @@ class SpeedTestResult extends HiveObject {
       'pingMin': pingMin,
       'pingMax': pingMax,
       'packetLoss': packetLoss,
+      'globalScore': globalScore,
       'testLog': testLog,
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
