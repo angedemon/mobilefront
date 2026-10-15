@@ -35,23 +35,45 @@ plus l'expérience que passer de 50 à 60 Mb/s.
 
 ## Seuils ARCEP
 
-Regroupés dans la classe `ArcepThresholds` de `scoring.dart`. C'est le seul
-endroit à modifier si le référentiel validé fixe d'autres valeurs.
+Source : cahiers des charges des licences technologiquement neutres
+d'Orange Burkina Faso, de l'ONATEL et de Telecel Faso, **annexe n° 3**
+« Engagements de couverture et de qualité de service du titulaire ». Les trois
+opérateurs ont les mêmes seuils. Ils sont regroupés dans la classe
+`ArcepThresholds` de `scoring.dart`, seul endroit à modifier s'ils changent.
+
+| Indicateur ARCEP | Seuil | Usage dans Yélé |
+|---|---|---|
+| Chargement des pages web en 30 s (page Kepler) | > 95 % des pages | Une page est réussie sous 30 s |
+| Pré-chargement vidéo (première image) | < 5 s | Au-delà, la session vidéo est non conforme |
+| Connexion à Internet réussie en 20 s | > 98 % | — |
+| Puissance 4G (RSRP) | ≥ -102 dBm | Couverture conforme ou non |
+| Puissance 3G (RSCP) / 2G (RxLev) | ≥ -96 / ≥ -92 dBm | Couverture conforme ou non |
+| Débits 4G | 90 % des mesures > 2 Mb/s ↓ et > 1 Mb/s ↑ | Débit conforme ou non |
+| Débits 3G | 90 % des mesures > 1 Mb/s ↓ et > 512 kb/s ↑ | Débit conforme ou non |
+| Catégories de débits | D1 > 50/30 kb/s, D2 > 1 Mb/s / 512 kb/s, D3 > 2/1 Mb/s, D4 > 4/2 Mb/s | Catégorie atteinte par la mesure |
+
+Les seuils en « 90 % des mesures » s'appliquent à une zone, sur l'ensemble
+des tests ; le bilan d'un test indique si **cette** mesure les respecte.
 
 **Navigation web.** Chaque page vaut :
 
-- 100 si elle se charge en moins de **5 s** ;
-- de 100 à 50, linéairement, entre 5 et **10 s** ;
-- 0 au-delà de 10 s ou en cas d'échec (critère de réussite ARCEP).
+- 100 si elle se charge en moins de **5 s** (repère interne de rapidité) ;
+- de 100 à 50, linéairement, entre 5 s et **30 s** (seuil ARCEP de réussite) ;
+- 0 au-delà de 30 s ou en cas d'échec.
 
 Le score de navigation est la moyenne sur toutes les pages tentées.
 
 **Streaming vidéo.** Base selon la meilleure résolution réellement tenue :
 2160p = 100, 1080p = 90, 720p = 75, 480p = 55, en dessous = 35. Ensuite :
 
-- −10 si la vidéo démarre en plus de **5 s** ;
 - −40 × la part du temps passée en mise en tampon, et −5 par interruption ;
-- plafonné à 20 si le démarrage dépasse **10 s** (échec au sens ARCEP).
+- première image au-delà de **5 s** (seuil ARCEP) : −25 points et note
+  plafonnée à 50.
+
+**Bilan.** La carte « Référentiel ARCEP » du bilan affiche, pour la mesure :
+la catégorie de débit et la conformité au seuil de la technologie, la
+couverture radio, le taux de pages réussies et le délai de première image,
+chacun avec « Conforme » ou « Non conforme » écrit en toutes lettres.
 
 ## Différence avec nPerf
 

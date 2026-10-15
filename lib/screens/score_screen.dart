@@ -138,6 +138,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                     _metrics(),
                     _qualityBand(),
                     if (_barometer != null) _barometerCard(),
+                    _arcepCard(),
                   ],
                   // Affiché aussi en cas d'échec, pour en montrer la raison.
                   if (r.hasStreamingTest || r.streamingError != null)
@@ -240,6 +241,80 @@ class _ScoreScreenState extends State<ScoreScreen> {
     String f(double v) =>
         speed ? AppSettings.speedValue(v, decimals: 1) : v.toStringAsFixed(0);
     return 'Min ${f(lo)} · Max ${f(hi)}';
+  }
+
+  /// IMP-06 : la mesure au regard des seuils de l'ARCEP Burkina (annexe 3
+  /// des cahiers des charges des licences). Le verdict est écrit en toutes
+  /// lettres, pas seulement signalé par une couleur.
+  Widget _arcepCard() {
+    final checks = Arcep.checks(
+      tech: r.usedMobile ? r.cellularTech : null,
+      dlMbps: r.downloadSpeed,
+      ulMbps: r.uploadSpeed,
+      rsrp: r.rsrp,
+      signalDbm: r.signalDbm,
+      browsingSuccessRate: r.hasBrowsingTest ? r.browsingSuccessRate : null,
+      streamingStartupMs: r.hasStreamingTest ? r.streamingStartupMs : null,
+    );
+    if (checks.isEmpty) return const SizedBox.shrink();
+    Widget row(ArcepCheck c) {
+      final color = c.ok == null
+          ? YeleColors.muted
+          : (c.ok! ? YeleColors.good : YeleColors.danger);
+      final verdict =
+          c.ok == null ? 'Non évalué' : (c.ok! ? 'Conforme' : 'Non conforme');
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+                c.ok == true
+                    ? Icons.check_circle
+                    : (c.ok == false ? Icons.cancel : Icons.remove_circle),
+                size: 20,
+                color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(c.label,
+                      style: const TextStyle(fontSize: 13, color: YeleColors.ink)),
+                  Text('${c.value} · $verdict',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: color)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Référentiel ARCEP',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          const Text('Seuils des cahiers des charges des opérateurs (annexe 3)',
+              style: TextStyle(fontSize: 12, color: YeleColors.muted)),
+          const SizedBox(height: 6),
+          for (final c in checks) row(c),
+        ],
+      ),
+    );
   }
 
   /// IMP-09 : « Votre débit est meilleur que 72 % des tests ».

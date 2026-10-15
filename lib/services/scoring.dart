@@ -8,25 +8,154 @@ import 'dart:math' as math;
 /// (`docs/SCORE.md` décrit l'échelle ; toute modification doit y être
 /// reportée, ainsi que dans `New_web/js/score.js`).
 
-/// Seuils de référence ARCEP intégrés au scoring (IMP-06).
+/// Seuils de référence ARCEP Burkina intégrés au scoring (IMP-06).
 ///
-/// Valeurs du protocole de mesure de la qualité des services mobiles
-/// (navigation web et streaming vidéo). À ajuster ici si le référentiel
-/// validé par l'ARCEP Burkina en fixe d'autres : c'est le seul endroit.
+/// Source : cahiers des charges des licences technologiquement neutres
+/// (Orange Burkina Faso, ONATEL, Telecel Faso), annexe n° 3 « Engagements
+/// de couverture et de qualité de service du titulaire ». Les trois
+/// opérateurs ont les mêmes seuils. C'est le seul endroit à modifier si
+/// l'ARCEP les révise.
 class ArcepThresholds {
   ArcepThresholds._();
 
-  /// Navigation : une page chargée en moins de 10 s est réussie.
-  static const double webSuccessMs = 10000;
+  // ── Qualité de service (annexe 3, § 2) ──────────────────────────────────
 
-  /// Navigation : en dessous de 5 s, le chargement est jugé rapide.
+  /// « Taux de chargement des pages web en 30 secondes (page Kepler) » :
+  /// une page chargée en moins de 30 s est réussie…
+  static const double webSuccessMs = 30000;
+
+  /// … et plus de 95 % des pages doivent l'être.
+  static const double webSuccessRateMin = 0.95;
+
+  /// « Temps moyen de pré-chargement ou temps au bout duquel la première
+  /// image de la vidéo est affichée » : moins de 5 s.
+  static const double videoStartMaxMs = 5000;
+
+  /// « Taux de connexion réussi à Internet (dans 20 secondes) » : > 98 %.
+  static const double internetConnectMs = 20000;
+
+  // Repère interne Yélé (pas un seuil ARCEP) : une page sous 5 s est jugée
+  // rapide et reçoit la note maximale.
   static const double webFastMs = 5000;
 
-  /// Streaming : démarrage de la vidéo en moins de 10 s, sinon échec.
-  static const double videoStartMaxMs = 10000;
+  // ── Couverture : niveau de puissance (annexe 3, § 1.1) ──────────────────
 
-  /// Streaming : démarrage jugé rapide en dessous de 5 s.
-  static const double videoStartFastMs = 5000;
+  static const int rsrp4gMinDbm = -102; // 4G : RSRP ≥ -102 dBm
+  static const int rscp3gMinDbm = -96; // 3G : RSCP ≥ -96 dBm
+  static const int rxlev2gMinDbm = -92; // 2G : RxLev ≥ -92 dBm
+
+  // ── Débits (annexe 3, § 1.3/1.4 et § 3.1) ──────────────────────────────
+
+  /// Zone couverte en 4G : 90 % des mesures > 2 Mb/s descendant et
+  /// > 1 Mb/s montant ; en 3G : > 1 Mb/s et > 512 kb/s.
+  static const double dl4gMinMbps = 2, ul4gMinMbps = 1;
+  static const double dl3gMinMbps = 1, ul3gMinMbps = 0.512;
+
+  /// Catégories de débits D1 à D4 (descendant, montant), en Mb/s.
+  static const debitCategories = [
+    (name: 'D4', dl: 4.0, ul: 2.0),
+    (name: 'D3', dl: 2.0, ul: 1.0),
+    (name: 'D2', dl: 1.0, ul: 0.512),
+    (name: 'D1', dl: 0.05, ul: 0.03),
+  ];
+}
+
+/// Un critère du référentiel ARCEP évalué sur une mesure.
+class ArcepCheck {
+  final String label;
+  final String value;
+  final bool? ok; // null : non mesuré
+  const ArcepCheck(this.label, this.value, this.ok);
+}
+
+/// Évaluation d'une mesure au regard des seuils ARCEP (IMP-06).
+class Arcep {
+  Arcep._();
+
+  /// Critères évalués pour une mesure, dans l'ordre d'affichage.
+  /// [tech] vaut null pour un test Wi-Fi : débit et couverture radio ne
+  /// relèvent alors pas des obligations des opérateurs mobiles.
+  static List<ArcepCheck> checks({
+    String? tech,
+    double? dlMbps,
+    double? ulMbps,
+    int? rsrp,
+    int? signalDbm,
+    double? browsingSuccessRate,
+    int? streamingStartupMs,
+  }) {
+    final list = <ArcepCheck>[];
+    if (tech != null && dlMbps != null && dlMbps > 0 && ulMbps != null) {
+      final is4g = tech == '4G' || tech == '5G';
+      final cat = debitCategory(dlMbps, ulMbps);
+      list.add(ArcepCheck(
+        'Débit $tech (seuil ${is4g ? '> 2 / 1 Mb/s' : '> 1 Mb/s / 512 kb/s'})',
+        cat == null ? 'sous D1' : 'catégorie $cat',
+        debitOk(tech, dlMbps, ulMbps),
+      ));
+    }
+    final cov = coverageOk(tech, rsrp, signalDbm);
+    if (cov != null) {
+      final is4g = tech == '4G' || tech == '5G';
+      final v = is4g ? (rsrp ?? signalDbm) : signalDbm;
+      list.add(ArcepCheck(
+        is4g ? 'Couverture (RSRP ≥ -102 dBm)' : 'Couverture ($tech)',
+        '$v dBm',
+        cov,
+      ));
+    }
+    if (browsingSuccessRate != null) {
+      list.add(ArcepCheck(
+        'Pages web en moins de 30 s (> 95 %)',
+        '${(browsingSuccessRate * 100).toStringAsFixed(0)} %',
+        browsingSuccessRate > ArcepThresholds.webSuccessRateMin,
+      ));
+    }
+    if (streamingStartupMs != null && streamingStartupMs > 0) {
+      list.add(ArcepCheck(
+        'Première image vidéo (< 5 s)',
+        '${(streamingStartupMs / 1000).toStringAsFixed(1)} s',
+        streamingStartupMs < ArcepThresholds.videoStartMaxMs,
+      ));
+    }
+    return list;
+  }
+
+  /// Catégorie de débit atteinte (« D4 » … « D1 »), ou null en dessous de D1.
+  static String? debitCategory(double dlMbps, double ulMbps) {
+    for (final c in ArcepThresholds.debitCategories) {
+      if (dlMbps > c.dl && ulMbps > c.ul) return c.name;
+    }
+    return null;
+  }
+
+  /// Seuil de puissance de la technologie : couvert ou non. null si la
+  /// technologie ou la mesure manque.
+  static bool? coverageOk(String? tech, int? rsrp, int? signalDbm) {
+    switch (tech) {
+      case '4G':
+      case '5G':
+        final v = rsrp ?? signalDbm;
+        return v == null ? null : v >= ArcepThresholds.rsrp4gMinDbm;
+      case '3G':
+        return signalDbm == null ? null : signalDbm >= ArcepThresholds.rscp3gMinDbm;
+      case '2G':
+        return signalDbm == null ? null : signalDbm >= ArcepThresholds.rxlev2gMinDbm;
+    }
+    return null;
+  }
+
+  /// Débit conforme au seuil de couverture de la technologie (4G : 2 et
+  /// 1 Mb/s ; 3G : 1 Mb/s et 512 kb/s). null hors 3G/4G/5G.
+  static bool? debitOk(String? tech, double dl, double ul) {
+    if (tech == '4G' || tech == '5G') {
+      return dl > ArcepThresholds.dl4gMinMbps && ul > ArcepThresholds.ul4gMinMbps;
+    }
+    if (tech == '3G') {
+      return dl > ArcepThresholds.dl3gMinMbps && ul > ArcepThresholds.ul3gMinMbps;
+    }
+    return null;
+  }
 }
 
 /// Libellé et niveau (0 = très faible … 4 = excellent) d'un score 0-100.
@@ -67,9 +196,9 @@ class Scoring {
   }
 
   /// Navigation web (IMP-06) : chaque page vaut 100 si elle se charge en
-  /// moins de [ArcepThresholds.webFastMs], de 100 à 50 jusqu'à
-  /// [ArcepThresholds.webSuccessMs], 0 au-delà ou en cas d'échec. Le score
-  /// est la moyenne sur toutes les pages tentées.
+  /// moins de [ArcepThresholds.webFastMs], de 100 à 50 jusqu'au seuil ARCEP
+  /// de réussite [ArcepThresholds.webSuccessMs] (30 s), 0 au-delà ou en cas
+  /// d'échec. Le score est la moyenne sur toutes les pages tentées.
   static double browsing(List<double> loadTimesMs, int failures) {
     final total = loadTimesMs.length + failures;
     if (total == 0) return 0;
@@ -87,9 +216,9 @@ class Scoring {
   }
 
   /// Streaming (IMP-06) : base selon la meilleure résolution tenue, puis
-  /// pénalités de démarrage et d'interruptions. Un démarrage au-delà de
-  /// [ArcepThresholds.videoStartMaxMs] est un échec au sens ARCEP : la note
-  /// est plafonnée à 20.
+  /// pénalité d'interruptions. Une première image affichée au-delà du
+  /// seuil ARCEP [ArcepThresholds.videoStartMaxMs] (5 s) rend la session
+  /// non conforme : -25 points et note plafonnée à 50.
   static double streaming({
     required int maxHeight,
     required int startupMs,
@@ -106,11 +235,10 @@ class Scoring {
                 : maxHeight >= 480
                     ? 55
                     : 35;
-    if (startupMs > ArcepThresholds.videoStartFastMs) {
-      s -= 10;
-    }
     s -= 40 * rebufferRatio + 5 * rebufferCount;
-    if (startupMs > ArcepThresholds.videoStartMaxMs) s = math.min(s, 20);
+    if (startupMs > ArcepThresholds.videoStartMaxMs) {
+      s = math.min(s - 25, 50);
+    }
     return s.clamp(0, 100).toDouble();
   }
 
