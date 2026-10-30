@@ -19,6 +19,10 @@
     <!-- Android 13+ : la notification permanente du service doit être autorisée -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Mode Contrôle : processeur maintenu actif pendant une campagne, et
+         demande d'exemption de l'optimisation de batterie. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <application
         android:label="Yélé"
@@ -51,6 +55,13 @@
              régulier, avec notification permanente et action d'arrêt. -->
         <service
             android:name=".SignalCollectorService"
+            android:exported="false"
+            android:foregroundServiceType="location"/>
+
+        <!-- Mode Contrôle : maintien en éveil pendant une campagne de drive
+             test / walk test (type location : GPS lisible écran éteint). -->
+        <service
+            android:name=".ControlService"
             android:exported="false"
             android:foregroundServiceType="location"/>
 
