@@ -12,6 +12,7 @@ import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
 import 'account_service.dart';
+import 'control_probes.dart';
 import 'device_identity_service.dart';
 import 'network_info_service.dart';
 import 'speed_test_api_service.dart';
@@ -101,6 +102,9 @@ Map<String, dynamic> controlPayload({
   required DeviceHealth health,
   required int cycleMs,
   String? error,
+  ProbeResult? web,
+  ProbeResult? video,
+  String? excluded,
 }) {
   final mobile = network?.usesMobile ?? false;
   return {
@@ -134,6 +138,13 @@ Map<String, dynamic> controlPayload({
     'jitter': result?.jitter,
     'packetLoss': result?.packetLoss,
     'dataUsedKiB': result?.dataUsedKiB,
+    // Web et vidéo mesurés sans écran (control_probes.dart).
+    'webUrl': web?.target,
+    'webLoadS': web?.seconds,
+    'webOk': web?.ok,
+    'videoVariant': video?.target,
+    'videoStartS': video?.seconds,
+    'videoOk': video?.ok,
     'batteryPercent': health.batteryPercent,
     'batteryTempC': health.batteryTempC,
     'charging': health.charging,
@@ -141,7 +152,19 @@ Map<String, dynamic> controlPayload({
     // Un cycle en échec est une mesure : une connexion data impossible
     // compte dans le taux de réussite exigé par l'ARCEP.
     'error': error,
+    // Cycle non retenu pour le contrôle (ex. test passé par le Wi-Fi) : il
+    // ne mesure pas l'opérateur mobile et n'entre dans aucun taux.
+    'excluded': excluded,
   };
+}
+
+/// Raison d'écarter un cycle : le contrôle ne vaut que sur le réseau mobile.
+/// Android fait passer les données par le Wi-Fi dès qu'il est connecté, même
+/// avec les données mobiles activées. Fonction pure, testée.
+String? exclusionFor(NetworkStatus? network) {
+  if (network == null) return null;
+  if (network.usesMobile) return null;
+  return network.isWifi ? 'wifi' : 'hors réseau mobile';
 }
 
 /// Résultat de l'envoi d'une mesure.
@@ -216,6 +239,10 @@ class ControlStore {
       await _box?.put('intervalSeconds', intervalSeconds);
     }
   }
+
+  /// Prochain numéro de cycle, sans le consommer.
+  int peekSeq(String campaign) =>
+      ((_box?.get('seq:$campaign') as int?) ?? 0) + 1;
 
   /// Numéro de cycle suivant pour une campagne. Il ne revient jamais en
   /// arrière : le serveur refuse un numéro déjà reçu.
@@ -391,12 +418,15 @@ class ControlSession {
       final payload = await _measureOnce(campaign, deviceId, health, started);
       if (_stopRequested) break;
       await store.enqueue(jsonEncode(payload));
+      final isExcluded = payload['excluded'] != null;
       final ok = payload['error'] == null;
-      final summary = ok
-          ? '▼ ${(payload['download'] as double).toStringAsFixed(1)} Mb/s · '
-              '▲ ${(payload['upload'] as double).toStringAsFixed(1)} Mb/s · '
-              '${(payload['ping'] as double).toStringAsFixed(0)} ms'
-          : 'Échec : ${payload['error']}';
+      final summary = isExcluded
+          ? 'Non retenu : ${payload['excluded'] == 'wifi' ? 'Wi-Fi actif, coupez le Wi-Fi' : 'pas de réseau mobile'}'
+          : ok
+              ? '▼ ${(payload['download'] as double).toStringAsFixed(1)} Mb/s · '
+                  '▲ ${(payload['upload'] as double).toStringAsFixed(1)} Mb/s · '
+                  '${(payload['ping'] as double).toStringAsFixed(0)} ms'
+              : 'Échec : ${payload['error']}';
       await _flush();
 
       final pause = controlPause(interval, health);
@@ -405,8 +435,11 @@ class ControlSession {
         failed: state.value.failed + (ok ? 0 : 1),
         pending: store.pending.length,
         lastSummary: summary,
-        warning: pause.reason,
-        clearWarning: pause.reason == null,
+        warning: isExcluded
+            ? 'Le téléphone est en Wi-Fi : ce cycle ne mesure pas l\'opérateur et '
+                'n\'est pas retenu. Coupez le Wi-Fi.'
+            : pause.reason,
+        clearWarning: !isExcluded && pause.reason == null,
         status: 'Prochain cycle dans ${pause.delay.inSeconds} s',
       ));
       await _native('updateControl', {
@@ -432,10 +465,29 @@ class ControlSession {
     NetworkStatus? network;
     SpeedTestResult? result;
     String? error;
+    String? excluded;
+    ProbeResult? web;
+    ProbeResult? video;
     try {
       _set(state.value.copyWith(status: 'Position GPS'));
       gps = await _position();
       network = await NetworkInfoService().getStatus();
+      excluded = exclusionFor(network);
+      if (excluded != null) {
+        // Rien à mesurer : le test passerait par la box, pas par l'opérateur.
+        return controlPayload(
+          campaign: campaign,
+          deviceId: deviceId,
+          seq: await store.nextSeq(campaign),
+          measuredAt: started,
+          gps: gps,
+          network: network,
+          result: null,
+          health: health,
+          cycleMs: DateTime.now().difference(started).inMilliseconds,
+          excluded: excluded,
+        );
+      }
       _set(state.value.copyWith(status: 'Débit, latence, perte de paquets'));
       result = await SpeedTestApiService().runSpeedTest(
         latitude: gps?.latitude,
@@ -455,6 +507,14 @@ class ControlSession {
       );
       if (result.downloadSpeed <= 0 && result.uploadSpeed <= 0) {
         error = 'aucun débit mesuré';
+      } else {
+        // Une page de référence par cycle, à tour de rôle, puis la vidéo.
+        final seqHint = store.peekSeq(campaign);
+        final page = BROWSING_REFERENCE_PAGES[seqHint % BROWSING_REFERENCE_PAGES.length];
+        _set(state.value.copyWith(status: 'Navigation web'));
+        web = await ControlProbes().web(page);
+        _set(state.value.copyWith(status: 'Vidéo'));
+        video = await ControlProbes().video(CONTROL_VIDEO_HLS_URL);
       }
       if (gps == null) error ??= 'position GPS indisponible';
     } catch (e) {
@@ -472,6 +532,8 @@ class ControlSession {
       health: health,
       cycleMs: DateTime.now().difference(started).inMilliseconds,
       error: error,
+      web: web,
+      video: video,
     );
   }
 

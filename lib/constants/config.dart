@@ -96,6 +96,11 @@ const int STREAMING_LEVEL_TIMEOUT_SEC = 20;
 // qualité d'après l'ancienne taille : c'est la principale source de résultats
 // non reproductibles.
 const int STREAMING_STAGE_SETTLE_MS = 900;
+// Mode Contrôle : vidéo HLS de test pour le délai de première image (sans
+// écran). Remplaçable à la compilation : --dart-define=YELE_CONTROL_VIDEO=…
+const String CONTROL_VIDEO_HLS_URL = String.fromEnvironment('YELE_CONTROL_VIDEO',
+    defaultValue: 'https://yele-test-assets.netlify.app/bbb/master.m3u8');
+
 // Pages de référence du test de navigation web (critère ARCEP : chargée en < 10 s)
 const List<String> BROWSING_REFERENCE_PAGES = [
   'https://www.google.com',
