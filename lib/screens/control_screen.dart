@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../services/account_service.dart';
 import '../services/control_session.dart';
+import '../services/device_tools_service.dart';
+import '../services/network_info_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -29,6 +31,9 @@ class _ControlScreenState extends State<ControlScreen> {
   bool? _agent; // null = vérification en cours ou serveur injoignable
   bool _checking = true;
   DeviceHealth _health = DeviceHealth.unknown;
+  NetworkStatus? _network;
+  bool _phoneGranted = true;
+  bool _locationGranted = true;
 
   @override
   void initState() {
@@ -46,10 +51,16 @@ class _ControlScreenState extends State<ControlScreen> {
   Future<void> _refresh() async {
     final agent = await _session.api.isAgent();
     final health = await _session.health();
+    final network = await NetworkInfoService().getStatus();
+    final perms = await DeviceToolsService().permissions();
+    bool granted(String k) => perms.any((p) => p.key == k && p.granted);
     if (!mounted) return;
     setState(() {
       _agent = agent;
       _health = health;
+      _network = network;
+      _phoneGranted = granted('phone');
+      _locationGranted = granted('location');
       _checking = false;
     });
   }
@@ -59,6 +70,16 @@ class _ControlScreenState extends State<ControlScreen> {
     if (!campaignPattern.hasMatch(code)) {
       _snack('Code de campagne invalide : lettres, chiffres, « - » et « _ », '
           'sans espace (ex. OUAGA-2026-11).');
+      return;
+    }
+    // Vérifications avant le départ : une mesure de contrôle ne vaut que sur
+    // le réseau mobile, avec la position et les informations radio.
+    await _refresh();
+    if (!mounted) return;
+    final problem = startProblem(
+        network: _network, phoneGranted: _phoneGranted, locationGranted: _locationGranted);
+    if (problem != null) {
+      _snack(problem);
       return;
     }
     await _session.setKeepScreenOn(_keepScreenOn);
@@ -197,7 +218,42 @@ class _ControlScreenState extends State<ControlScreen> {
         subtitle: const Text('Pour suivre la mesure au véhicule. La mesure '
             'continue aussi écran éteint.'),
       ),
+      _checkTile(
+        ok: _network != null && _network!.usesMobile,
+        okText: 'Données mobiles : ${_network?.mobileLabel ?? ''}',
+        koText: _network?.isWifi == true
+            ? 'Wi-Fi actif : coupez-le, le test passerait par la box'
+            : 'Pas de réseau mobile : activez les données mobiles',
+      ),
+      _checkTile(
+        ok: _phoneGranted,
+        okText: 'Autorisation « Téléphone » accordée (signal radio, SIM)',
+        koText: 'Autorisation « Téléphone » manquante : pas de signal radio',
+        action: () async {
+          await DeviceToolsService().request('phone');
+          await Future.delayed(const Duration(seconds: 2));
+          _refresh();
+        },
+      ),
+      _checkTile(
+        ok: _locationGranted,
+        okText: 'Localisation autorisée',
+        koText: 'Localisation refusée : les mesures ne seraient pas placées',
+        action: () async {
+          await DeviceToolsService().request('location');
+          await Future.delayed(const Duration(seconds: 2));
+          _refresh();
+        },
+      ),
       _batteryTile(),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _refresh,
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text('Vérifier à nouveau'),
+        ),
+      ),
       const SizedBox(height: 18),
       FilledButton.icon(
         style: FilledButton.styleFrom(
@@ -216,6 +272,24 @@ class _ControlScreenState extends State<ControlScreen> {
         style: TextStyle(color: YeleColors.muted, fontSize: 12.5),
       ),
     ];
+  }
+
+  Widget _checkTile({
+    required bool ok,
+    required String okText,
+    required String koText,
+    Future<void> Function()? action,
+  }) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      leading: Icon(ok ? Icons.check_circle : Icons.error_outline,
+          color: ok ? YeleColors.good : YeleColors.danger),
+      title: Text(ok ? okText : koText),
+      trailing: ok || action == null
+          ? null
+          : TextButton(onPressed: action, child: const Text('Autoriser')),
+    );
   }
 
   Widget _batteryTile() {
@@ -348,4 +422,27 @@ class _ControlScreenState extends State<ControlScreen> {
           ],
         ),
       );
+}
+
+/// Ce qui empêche de démarrer une campagne, ou null si tout est prêt.
+/// Fonction pure, testée.
+String? startProblem({
+  required NetworkStatus? network,
+  required bool phoneGranted,
+  required bool locationGranted,
+}) {
+  if (network != null && network.isWifi) {
+    return 'Coupez le Wi-Fi : en Wi-Fi, le test mesure la box et non '
+        "l'opérateur mobile.";
+  }
+  if (network != null && !network.usesMobile) {
+    return 'Activez les données mobiles avant de démarrer.';
+  }
+  if (!locationGranted) {
+    return 'Autorisez la localisation : chaque mesure doit être placée.';
+  }
+  if (!phoneGranted) {
+    return "Autorisez « Téléphone » : sans elle, pas d'opérateur ni de signal radio.";
+  }
+  return null;
 }
