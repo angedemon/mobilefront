@@ -7,6 +7,9 @@ import android.content.pm.PackageManager
 import android.net.TrafficStats
 import android.os.Build
 import android.os.Process
+import android.net.Uri
+import android.provider.Settings
+import android.view.WindowManager
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -65,6 +68,49 @@ class MainActivity : FlutterActivity() {
                             call.argument<String>("title") ?: "Yélé",
                             call.argument<String>("text") ?: "",
                         )
+                        result.success(true)
+                    }
+                    // Mode Contrôle : service de maintien en éveil.
+                    "startControl" -> result.success(
+                        startControl(call.argument<String>("campaign") ?: "")
+                    )
+                    "stopControl" -> {
+                        startService(
+                            Intent(this, ControlService::class.java)
+                                .setAction(ControlService.ACTION_STOP)
+                        )
+                        result.success(true)
+                    }
+                    "updateControl" -> {
+                        if (ControlService.isRunning) {
+                            startService(
+                                Intent(this, ControlService::class.java)
+                                    .setAction(ControlService.ACTION_UPDATE)
+                                    .putExtra(ControlService.EXTRA_TEXT, call.argument<String>("text"))
+                            )
+                        }
+                        result.success(true)
+                    }
+                    "getControlState" -> {
+                        val p = ControlService.prefs(this)
+                        result.success(
+                            mapOf(
+                                "active" to p.getBoolean(ControlService.KEY_ACTIVE, false),
+                                "campaign" to p.getString(ControlService.KEY_CAMPAIGN, ""),
+                                "running" to ControlService.isRunning,
+                            )
+                        )
+                    }
+                    "getDeviceHealth" -> result.success(ControlService.health(this))
+                    "requestIgnoreBatteryOptimizations" -> {
+                        result.success(requestIgnoreBatteryOptimizations())
+                    }
+                    "setKeepScreenOn" -> {
+                        if (call.argument<Boolean>("on") == true) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
                         result.success(true)
                     }
                     else -> result.notImplemented()
@@ -316,5 +362,37 @@ class MainActivity : FlutterActivity() {
         }
 
         return info
+    }
+
+    // ── Mode Contrôle ────────────────────────────────────────────────────────
+
+    private fun startControl(campaign: String): Boolean {
+        val intent = Intent(this, ControlService::class.java)
+            .setAction(ControlService.ACTION_START)
+            .putExtra(ControlService.EXTRA_CAMPAIGN, campaign)
+        return try {
+            ContextCompat.startForegroundService(this, intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /// Demande à l'utilisateur d'exempter Yélé de l'optimisation de batterie,
+    /// sans quoi certains fabricants coupent la mesure au bout de quelques
+    /// minutes écran éteint. Renvoie vrai si l'exemption est déjà accordée.
+    private fun requestIgnoreBatteryOptimizations(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return true
+        return try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.parse("package:$packageName"))
+            )
+            false
+        } catch (_: Exception) {
+            false
+        }
     }
 }

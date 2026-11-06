@@ -6,6 +6,7 @@ import 'services/app_settings.dart';
 import 'models/test_selection.dart';
 import 'screens/account_screen.dart';
 import 'screens/consent_screen.dart';
+import 'screens/control_screen.dart';
 import 'screens/coverage_screen.dart';
 import 'screens/full_test_screen.dart';
 import 'screens/history_screen.dart';
@@ -13,6 +14,7 @@ import 'screens/privacy_policy_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/background_collection_service.dart';
 import 'services/consent_service.dart';
+import 'services/control_session.dart';
 import 'services/local_storage_service.dart';
 import 'services/speed_test_api_service.dart';
 import 'theme/yele_theme.dart';
@@ -36,7 +38,17 @@ Future<void> main() async {
     // pas continuer tant que la nouvelle n'est pas acceptée.
     await BackgroundCollectionService().stop();
   }
-  runApp(YeleApp(hasConsented: hasConsented));
+  // Mode Contrôle : une campagne restée active (téléphone redémarré, app
+  // tuée par le système) reprend seule, et l'app s'ouvre sur son écran.
+  var controlResumed = false;
+  if (hasConsented) {
+    try {
+      controlResumed = await ControlSession.instance.resumeIfActive();
+    } catch (_) {
+      // Reprise impossible : l'agent relancera depuis l'écran du mode.
+    }
+  }
+  runApp(YeleApp(hasConsented: hasConsented, controlResumed: controlResumed));
 
   // ISS-08 : renvoie en arrière-plan les mesures jamais transmises.
   if (hasConsented) {
@@ -48,7 +60,11 @@ Future<void> main() async {
 
 class YeleApp extends StatelessWidget {
   final bool hasConsented;
-  const YeleApp({super.key, this.hasConsented = true});
+  /// Vrai si une campagne du mode Contrôle a repris au lancement.
+  final bool controlResumed;
+
+  const YeleApp(
+      {super.key, this.hasConsented = true, this.controlResumed = false});
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +91,9 @@ class YeleApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       // ISS-12 : test ouvert au démarrage, choisi dans les réglages.
-      initialRoute: hasConsented ? AppSettings.defaultTest : '/consent',
+      initialRoute: !hasConsented
+          ? '/consent'
+          : (controlResumed ? '/control' : AppSettings.defaultTest),
       routes: {
         '/consent': (_) => const ConsentScreen(),
         '/privacy': (_) => const PrivacyPolicyScreen(),
@@ -107,6 +125,7 @@ class YeleApp extends StatelessWidget {
         '/coverage': (_) => const CoverageScreen(),
         '/settings': (_) => const SettingsScreen(),
         '/account': (_) => const AccountScreen(),
+        '/control': (_) => const ControlScreen(),
       },
     );
   }

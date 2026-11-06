@@ -26,6 +26,9 @@ class YeleDrawer extends StatelessWidget {
                 '/coverage'),
             _item(context, Icons.person_outline, tr('Mon compte', 'My account'),
                 '/account'),
+            // Mode Contrôle : drive test / walk test des agents habilités.
+            _item(context, Icons.directions_car_outlined,
+                tr('Mode Contrôle', 'Control mode'), '/control'),
             _item(context, Icons.settings, tr('Réglages', 'Settings'), '/settings'),
           ],
         ),
